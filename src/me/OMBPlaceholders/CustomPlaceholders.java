@@ -13,11 +13,11 @@ public class CustomPlaceholders extends PlaceholderExpansion {
 		
 		// Grab the list of placeholders
 		Map<String, String> placeholders = Main.getInstance().getPlaceholders();
-		
+
 		// Check if it exists, and if it does, return the value
 		if(placeholders.containsKey(identifier)) return placeholders.get(identifier);
 		
-		return null;
+		return "Invalid Identifier: " + identifier;
 	}
 	
 	@Override

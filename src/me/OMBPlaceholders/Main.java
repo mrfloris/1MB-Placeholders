@@ -39,7 +39,7 @@ public class Main extends JavaPlugin {
 		for(String placeholder : getConfig().getConfigurationSection("Placeholders").getKeys(false)) {
 			
 			// Skipping duplicate entries
-			if(placeholder.contains(placeholder)) continue;
+			if(placeholders.containsKey(placeholder)) continue;
 			
 			// Adding the placeholder to the map
 			placeholders.put(placeholder, getConfig().getString("Placeholders." + placeholder));

@@ -1,0 +1,7 @@
+# Add your placeholders here.
+# Ensure that each one is a string, if you want it to be a number, just encase it with '' -> '1'
+
+Placeholders:
+
+  1mb_version: '3.3.4'
+  mc_version: '1.19.4'
