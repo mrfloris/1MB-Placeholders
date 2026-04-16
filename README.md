@@ -16,7 +16,7 @@ Little plugin for 1MoreBlock.com, which helps us to quickly add some global plac
 
 ## Support
 
-- n/a
+- Make issue ticket
 
 ## Credits
 
