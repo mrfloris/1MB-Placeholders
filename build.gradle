@@ -1,0 +1,94 @@
+plugins {
+    id 'java'
+}
+
+group = 'me.onemb'
+version = providers.gradleProperty('pluginVersion').get()
+
+def buildNumber = providers.gradleProperty('buildNumber').get()
+def targetJava = providers.gradleProperty('targetJava').get().toInteger()
+def minecraftVersion = providers.gradleProperty('minecraftVersion').get()
+def paperApiVersion = providers.gradleProperty('paperApiVersion').get()
+def placeholderApiVersion = providers.gradleProperty('placeholderApiVersion').get()
+def apiVersion = providers.gradleProperty('apiVersion').get()
+def jarBaseName = '1MB-Placeholders'
+def pluginVersion = project.version.toString()
+def jarFileName = "${jarBaseName}-v${pluginVersion}-j${targetJava}-${minecraftVersion}.jar"
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'papermc'
+        url = uri('https://repo.papermc.io/repository/maven-public/')
+    }
+    maven {
+        name = 'placeholderapi'
+        url = uri('https://repo.helpch.at/releases/')
+    }
+}
+
+dependencies {
+    compileOnly "io.papermc.paper:paper-api:${paperApiVersion}"
+    compileOnly "me.clip:placeholderapi:${placeholderApiVersion}"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(targetJava)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = targetJava
+}
+
+tasks.processResources {
+    def properties = [
+        pluginVersion      : project.version,
+        buildNumber        : buildNumber,
+        targetJava         : targetJava,
+        minecraftVersion   : minecraftVersion,
+        paperApiVersion    : paperApiVersion,
+        placeholderApiVersion: placeholderApiVersion,
+        apiVersion         : apiVersion
+    ]
+
+    inputs.properties(properties)
+    filteringCharset = 'UTF-8'
+
+    filesMatching(['plugin.yml', 'build-info.properties']) {
+        expand(properties)
+    }
+}
+
+tasks.jar {
+    archiveBaseName = jarBaseName
+    archiveVersion = "v${pluginVersion}-j${targetJava}-${minecraftVersion}"
+
+    manifest {
+        attributes(
+            'Implementation-Title': jarBaseName,
+            'Implementation-Version': pluginVersion,
+            'Implementation-Build': buildNumber,
+            'Implementation-Vendor': '1MoreBlock.com'
+        )
+    }
+}
+
+tasks.register('printBuildConfig') {
+    group = 'help'
+    description = 'Prints the current build configuration.'
+
+    doLast {
+        println "Plugin version : ${pluginVersion}"
+        println "Build number   : ${buildNumber}"
+        println "Minecraft      : ${minecraftVersion}"
+        println "Paper API      : ${paperApiVersion}"
+        println "PlaceholderAPI : ${placeholderApiVersion}"
+        println "Java target    : ${targetJava}"
+        println "API version    : ${apiVersion}"
+        println "Jar name       : ${jarFileName}"
+    }
+}

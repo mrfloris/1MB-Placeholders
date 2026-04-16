@@ -1,0 +1,15 @@
+name: 1MB-Placeholders
+main: me.onemb.placeholders.OneMBPlaceholdersPlugin
+version: ${pluginVersion}
+api-version: '${apiVersion}'
+authors: [mrfloris, PyroTempus]
+depend: [PlaceholderAPI]
+commands:
+  _placeholders:
+    description: Lists and manages configured 1MB placeholders.
+    usage: /<command> [help|reload]
+    permission: onemb.placeholders.admin
+permissions:
+  onemb.placeholders.admin:
+    description: Allows use of the /_placeholders administrative commands.
+    default: op

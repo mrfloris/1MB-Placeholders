@@ -1,0 +1,16 @@
+# Add your placeholders here.
+# Ensure that each one is a string, if you want it to be a number, just encase it with '' -> '1'
+#
+# Placeholder syntax:
+# Use placeholders in-game as %onemb_[placeholder]%
+# Example:
+#   %onemb_1mb_version%
+#   %onemb_1mb_staff%
+
+Placeholders:
+  1mb_version: '3.11.7.5'
+  mc_version: '1.21.11'
+  java_version: '26'
+  1mb_staff: 'mrfloris, tidala, and others'
+  header: '{#orange}--------------------------------'
+  footer: '{#orange}--------------------------------'

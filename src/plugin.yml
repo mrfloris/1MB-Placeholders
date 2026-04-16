@@ -1,7 +1,0 @@
-name: 1MB-Placeholders
-main: me.OMBPlaceholders.Main
-version: 1.0.0
-depend: [PlaceholderAPI]
-api-version: 1.14
-author: [mrfloris, PyroTempus]
-commands:
