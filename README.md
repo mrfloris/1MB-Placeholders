@@ -6,6 +6,7 @@ Little plugin for 1MoreBlock.com that adds global PlaceholderAPI values we can r
 
 - Paper `1.21.11` API
 - PlaceholderAPI plugin
+- LuckPerms, if you want to assign the `onemb.placeholders.admin` permission for the `/_placeholders` in-game admin command
 - Tested against `PlaceholderAPI-2.12.3-DEV-265.jar`
 - PlaceholderAPI builds can be downloaded from <https://ci.extendedclip.com/job/PlaceholderAPI/>
 
@@ -63,16 +64,6 @@ build/libs/1MB-Placeholders-v1.0.0-j21-1.19.1.jar
 
 Pre-compiled release jars can be downloaded from the GitHub Releases section in the repository sidebar on the right side of the GitHub page.
 
-### How to make a GitHub release
-
-1. Push your commit and open the repository on GitHub.
-2. In the right sidebar, click `Releases`, then click `Draft a new release`.
-3. Create a tag such as `v1.0.0-build-519` or `v1.1.0-build-520`.
-4. Set the release title to something clear, for example `1MB-Placeholders v1.1.0 build 520`.
-5. Drag the compiled jar from `build/libs/` into the release assets area.
-6. Add short release notes describing the Minecraft version, Java version, and major changes.
-7. Publish the release.
-
 ## Commands
 
 - `/_placeholders` lists all configured placeholders and their values.
@@ -91,7 +82,7 @@ This is made for the 1MoreBlock.com Minecraft server, you're free to use this fo
 ## Credits
 
 Code created, and .jar made by PyroTempus. (v 1.0.0 build 519 for 1.19.x)
-Code updated by mrfloris and OpenAI. (v 1.1.0 build 520 for 1.21.11)
+Code updated by mrfloris and OpenAI. (v 1.1.0 build 521 for 1.21.11)
 
 ## Placeholders
 

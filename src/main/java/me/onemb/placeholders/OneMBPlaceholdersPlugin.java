@@ -50,6 +50,18 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         return Optional.ofNullable(placeholders.get(identifier));
     }
 
+    public String getPluginVersion() {
+        return buildMetadata.pluginVersion();
+    }
+
+    public String getBuildNumber() {
+        return buildMetadata.buildNumber();
+    }
+
+    public String getMinecraftVersion() {
+        return buildMetadata.minecraftVersion();
+    }
+
     private void createDefaultConfigIfMissing() {
         if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();

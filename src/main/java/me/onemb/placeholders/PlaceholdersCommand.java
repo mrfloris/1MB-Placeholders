@@ -84,7 +84,18 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     private void sendPlaceholderList(final CommandSender sender) {
         final Map<String, String> placeholders = plugin.getPlaceholders();
 
-        sender.sendMessage(ChatColor.GOLD + "Placeholders:");
+        sender.sendMessage(
+            ChatColor.GOLD
+                + "1MB Placeholders: "
+                + ChatColor.WHITE
+                + "(v"
+                + plugin.getPluginVersion()
+                + " build "
+                + plugin.getBuildNumber()
+                + " for "
+                + plugin.getMinecraftVersion()
+                + ")"
+        );
         if (placeholders.isEmpty()) {
             sender.sendMessage(ChatColor.GRAY + "  No placeholders are currently configured.");
             return;
@@ -103,7 +114,16 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     }
 
     private void sendHelp(final CommandSender sender, final String label) {
-        sender.sendMessage(ChatColor.GOLD + "1MB Placeholders commands:");
+        sender.sendMessage(
+            ChatColor.GOLD
+                + "1MB Placeholders commands: "
+                + ChatColor.WHITE
+                + "(v"
+                + plugin.getPluginVersion()
+                + " build "
+                + plugin.getBuildNumber()
+                + ")"
+        );
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + ChatColor.WHITE + " - List all configured placeholders and their values.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " help" + ChatColor.WHITE + " - Show this help message.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " reload" + ChatColor.WHITE + " - Reload placeholders from config.yml.");
