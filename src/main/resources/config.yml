@@ -6,6 +6,9 @@
 #   %onemb_1mb_version%
 #   %onemb_mc_version%
 #   %onemb_day_name%
+# Admin commands accept bare keys like 1mb_version,
+# full references like %onemb_1mb_version%,
+# and category:key references like system:mc_version.
 #
 # Placeholder types:
 # - static: a fixed value stored in this config.yml file.

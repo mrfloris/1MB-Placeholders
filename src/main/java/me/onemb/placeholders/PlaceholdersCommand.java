@@ -168,7 +168,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final String subCommand = args[0].toLowerCase(Locale.ROOT);
         return switch (subCommand) {
             case "list" -> completeListArguments(args);
-            case "get", "set", "remove", "preview" -> completeKeys(args);
+            case "get", "set", "remove", "preview" -> completeKeyArguments(args);
             case "add" -> completeAddArguments(args);
             case "search" -> completeSearchArguments(args);
             case "debug" -> completeDebugArguments(args);
@@ -225,15 +225,13 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     }
 
     private void handleGet(final CommandSender sender, final String[] args) {
-        if (args.length != 2) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders get <key>");
-            return;
-        }
-
-        final String key = plugin.normalizePlaceholderReference(args[1]);
-        final PlaceholderEntry entry = plugin.getConfiguredPlaceholderEntry(key).orElse(null);
+        final PlaceholderEntry entry = resolveConfiguredEntry(
+            sender,
+            args,
+            "get",
+            "Usage: /_placeholders get <key> or /_placeholders get <category> <key>"
+        );
         if (entry == null) {
-            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
             return;
         }
 
@@ -255,15 +253,13 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     }
 
     private void handlePreview(final CommandSender sender, final String[] args) {
-        if (args.length != 2) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders preview <key>");
-            return;
-        }
-
-        final String key = plugin.normalizePlaceholderReference(args[1]);
-        final PlaceholderEntry entry = plugin.getConfiguredPlaceholderEntry(key).orElse(null);
+        final PlaceholderEntry entry = resolveConfiguredEntry(
+            sender,
+            args,
+            "preview",
+            "Usage: /_placeholders preview <key> or /_placeholders preview <category> <key>"
+        );
         if (entry == null) {
-            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
             return;
         }
 
@@ -311,14 +307,23 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private void handleAdd(final CommandSender sender, final String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders add [category:]<key> <value...>");
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders add [category:]<key> <value...> or /_placeholders add <category> <key> <value...>");
             return;
         }
 
-        final String[] categoryAndKey = splitCategoryAndKey(args[1]);
+        final String[] categoryAndKey;
+        final String value;
+
+        if (args.length >= 4 && plugin.hasCategory(args[1]) && !args[1].contains(":")) {
+            categoryAndKey = new String[] {args[1], args[2]};
+            value = String.join(" ", slice(args, 3, args.length));
+        } else {
+            categoryAndKey = splitCategoryAndKey(args[1]);
+            value = String.join(" ", slice(args, 2, args.length));
+        }
+
         final String category = categoryAndKey[0];
         final String key = categoryAndKey[1];
-        final String value = String.join(" ", slice(args, 2, args.length));
         final ActionResult result = plugin.addPlaceholderToConfig(category, key, value, getActorName(sender));
 
         sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
@@ -326,24 +331,47 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private void handleSet(final CommandSender sender, final String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders set <key> <value...>");
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders set <key> <value...> or /_placeholders set <category> <key> <value...>");
             return;
         }
 
-        final String key = args[1];
-        final String value = String.join(" ", slice(args, 2, args.length));
-        final ActionResult result = plugin.setPlaceholderInConfig(key, value, getActorName(sender));
+        final String keyReference;
+        final String expectedCategory;
+        final String value;
+
+        if (args.length >= 4 && plugin.hasCategory(args[1])) {
+            expectedCategory = plugin.normalizeCategory(args[1]);
+            keyReference = args[1] + ":" + args[2];
+            value = String.join(" ", slice(args, 3, args.length));
+        } else {
+            expectedCategory = null;
+            keyReference = args[1];
+            value = String.join(" ", slice(args, 2, args.length));
+        }
+
+        if (resolveConfiguredEntry(sender, keyReference, expectedCategory, "set") == null) {
+            return;
+        }
+
+        final ActionResult result = plugin.setPlaceholderInConfig(keyReference, value, getActorName(sender));
 
         sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
     }
 
     private void handleRemove(final CommandSender sender, final String[] args) {
-        if (args.length != 2) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders remove <key>");
+        if (args.length != 2 && !(args.length == 3 && plugin.hasCategory(args[1]))) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders remove <key> or /_placeholders remove <category> <key>");
             return;
         }
 
-        final ActionResult result = plugin.removePlaceholderFromConfig(args[1], getActorName(sender));
+        final String expectedCategory = args.length == 3 ? plugin.normalizeCategory(args[1]) : null;
+        final String keyReference = args.length == 3 ? args[1] + ":" + args[2] : args[1];
+
+        if (resolveConfiguredEntry(sender, keyReference, expectedCategory, "remove") == null) {
+            return;
+        }
+
+        final ActionResult result = plugin.removePlaceholderFromConfig(keyReference, getActorName(sender));
         sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
     }
 
@@ -459,28 +487,53 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        if (args.length == 3 && ("clear".equalsIgnoreCase(args[1]) || "purge".equalsIgnoreCase(args[1]))) {
+        if (args.length == 2 && "clear".equalsIgnoreCase(args[1])) {
+            sendDebugClearHelp(sender);
+            return;
+        }
+
+        if (args.length == 3 && "clear".equalsIgnoreCase(args[1])) {
             handleDebugClear(sender, args[2]);
             return;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|clear|purge]");
+        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|clear]");
         sendDebugOverview(sender);
     }
 
     private void handleDebugClear(final CommandSender sender, final String target) {
         final String normalizedTarget = target.toLowerCase(Locale.ROOT);
         final ActionResult result = switch (normalizedTarget) {
-            case "log", "logs" -> plugin.clearLogs(getActorName(sender));
-            case "backup", "backups" -> plugin.clearBackups(getActorName(sender));
+            case "logs" -> plugin.clearLogs(getActorName(sender));
+            case "backups" -> plugin.clearBackups(getActorName(sender));
             default -> ActionResult.failure("Usage: /_placeholders debug clear <logs|backups>");
         };
 
         sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
     }
 
+    private void sendDebugClearHelp(final CommandSender sender) {
+        sender.sendMessage(ChatColor.GOLD + "1MB Placeholders debug clear:");
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /_placeholders debug clear logs"
+                + ChatColor.WHITE
+                + " - Clear log files while keeping the persistent purge-history.log record."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /_placeholders debug clear backups"
+                + ChatColor.WHITE
+                + " - Clear saved backup files and audit who cleared them."
+        );
+    }
+
     private void sendDebugOverview(final CommandSender sender) {
         final ActionResult bundledConfigStatus = plugin.validateBundledDefaultConfig();
+        final ActionResult currentConfigStatus = plugin.validateCurrentConfigFile();
+        final FormattingSettings formattingSettings = plugin.getFormattingSettings();
+        final ListingSettings listingSettings = plugin.getListingSettings();
+        final List<String> validationIssues = plugin.getValidationIssues();
 
         sender.sendMessage(
             ChatColor.GOLD
@@ -536,6 +589,8 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + ChatColor.WHITE
                 + plugin.getServer().getMinecraftVersion()
         );
+        sender.sendMessage(ChatColor.GRAY + "  Data folder: " + ChatColor.WHITE + plugin.getDataFolderPath());
+        sender.sendMessage(ChatColor.GRAY + "  Config path: " + ChatColor.WHITE + plugin.getConfigFilePath());
         sender.sendMessage(
             ChatColor.GRAY
                 + "  Config file: "
@@ -551,6 +606,12 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         );
         sender.sendMessage(
             ChatColor.GRAY
+                + "  Current config status: "
+                + (currentConfigStatus.success() ? ChatColor.GREEN : ChatColor.RED)
+                + currentConfigStatus.message()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
                 + "  Active placeholders: "
                 + ChatColor.WHITE
                 + plugin.getLivePlaceholderCount()
@@ -561,6 +622,69 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + (bundledConfigStatus.success() ? ChatColor.GREEN : ChatColor.RED)
                 + bundledConfigStatus.message()
         );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Backups: "
+                + ChatColor.WHITE
+                + plugin.countBackupFiles()
+                + " file(s) in "
+                + plugin.getBackupsDirectoryPath()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Logs: "
+                + ChatColor.WHITE
+                + plugin.countClearableLogFiles()
+                + " clearable file(s) in "
+                + plugin.getLogsDirectoryPath()
+                + ChatColor.GRAY
+                + (plugin.hasPurgeHistoryLog() ? " + purge-history.log" : "")
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Formatting: "
+                + ChatColor.WHITE
+                + "MiniMessage="
+                + onOff(formattingSettings.parseMiniMessage())
+                + ", legacy=&="
+                + onOff(formattingSettings.convertLegacyAmpersandCodes())
+                + ", strip="
+                + onOff(formattingSettings.stripFormatting())
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Listing: "
+                + ChatColor.WHITE
+                + "category="
+                + onOff(listingSettings.showCategory())
+                + ", enabled-only="
+                + onOff(listingSettings.onlyShowEnabledPlaceholders())
+                + ", description="
+                + onOff(listingSettings.showCategoryDescription())
+                + ", type="
+                + onOff(listingSettings.showType())
+                + ", count="
+                + onOff(listingSettings.showCategoryCount())
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Validation: "
+                + (validationIssues.isEmpty() ? ChatColor.GREEN : ChatColor.YELLOW)
+                + validationIssues.size()
+                + " issue(s)"
+        );
+        if (!validationIssues.isEmpty()) {
+            final int limit = Math.min(5, validationIssues.size());
+            for (int index = 0; index < limit; index++) {
+                sender.sendMessage(ChatColor.YELLOW + "    - " + validationIssues.get(index));
+            }
+
+            if (validationIssues.size() > limit) {
+                sender.sendMessage(
+                    ChatColor.GRAY + "    ... and " + (validationIssues.size() - limit) + " more. Fix config issues and reload to re-check."
+                );
+            }
+        }
         sender.sendMessage(
             ChatColor.YELLOW
                 + "  /_placeholders debug config"
@@ -596,15 +720,20 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " <page>" + ChatColor.WHITE + " - Players can jump to another page of placeholders.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " list [category] [page]" + ChatColor.WHITE + " - List placeholders, optionally filtered by category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " get <key>" + ChatColor.WHITE + " - Show stored and live details for one placeholder.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " get <category> <key>" + ChatColor.WHITE + " - Same as get, with an explicit category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " preview <key>" + ChatColor.WHITE + " - Show raw, formatted, and plain previews.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " preview <category> <key>" + ChatColor.WHITE + " - Same as preview, with an explicit category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " search <text> [category] [page]" + ChatColor.WHITE + " - Search keys, descriptions, and values.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add [category:]<key> <value...>" + ChatColor.WHITE + " - Save a new static placeholder to config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add <category> <key> <value...>" + ChatColor.WHITE + " - Same as add, using an explicit existing category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <key> <value...>" + ChatColor.WHITE + " - Update an existing static placeholder in config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <category> <key> <value...>" + ChatColor.WHITE + " - Same as set, with an explicit category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <key>" + ChatColor.WHITE + " - Remove a placeholder from config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <category> <key>" + ChatColor.WHITE + " - Same as remove, with an explicit category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " help" + ChatColor.WHITE + " - Show this help message.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " reload" + ChatColor.WHITE + " - Reload placeholders from config.yml.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " backup" + ChatColor.WHITE + " - Create a backup copy of config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " debug" + ChatColor.WHITE + " - Show plugin diagnostics and available debug actions.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " debug" + ChatColor.WHITE + " - Show plugin diagnostics, settings, paths, and validation issues.");
         sender.sendMessage(
             ChatColor.YELLOW
                 + "  /"
@@ -787,11 +916,24 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         return List.of();
     }
 
-    private List<String> completeKeys(final String[] args) {
+    private List<String> completeKeyArguments(final String[] args) {
         if (args.length == 2) {
-            return matchToken(
-                args[1],
+            final List<String> suggestions = new ArrayList<>(
                 plugin.getConfiguredPlaceholders().stream()
+                    .map(PlaceholderEntry::key)
+                    .sorted()
+                    .toList()
+            );
+            suggestions.addAll(plugin.getCategoryNames());
+            return matchToken(args[1], suggestions);
+        }
+
+        if (args.length == 3 && plugin.hasCategory(args[1])) {
+            final String normalizedCategory = plugin.normalizeCategory(args[1]);
+            return matchToken(
+                args[2],
+                plugin.getConfiguredPlaceholders().stream()
+                    .filter(entry -> entry.category().equals(normalizedCategory))
                     .map(PlaceholderEntry::key)
                     .sorted()
                     .toList()
@@ -803,10 +945,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private List<String> completeAddArguments(final String[] args) {
         if (args.length == 2) {
-            final List<String> suggestions = new ArrayList<>();
-            suggestions.add("default:");
-            plugin.getCategoryNames().forEach(category -> suggestions.add(category + ":"));
-            return matchToken(args[1], suggestions);
+            return matchToken(args[1], plugin.getCategoryNames());
         }
 
         return List.of();
@@ -826,11 +965,11 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private List<String> completeDebugArguments(final String[] args) {
         if (args.length == 2) {
-            return matchToken(args[1], List.of("config", "clear", "purge"));
+            return matchToken(args[1], List.of("config", "clear"));
         }
 
-        if (args.length == 3 && ("clear".equalsIgnoreCase(args[1]) || "purge".equalsIgnoreCase(args[1]))) {
-            return matchToken(args[2], List.of("logs", "backups", "backup"));
+        if (args.length == 3 && "clear".equalsIgnoreCase(args[1])) {
+            return matchToken(args[2], List.of("logs", "backups"));
         }
 
         return List.of();
@@ -872,6 +1011,80 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private String safeDisplay(final @Nullable String value) {
         return value == null ? "<not active>" : value;
+    }
+
+    private @Nullable PlaceholderEntry resolveConfiguredEntry(
+        final CommandSender sender,
+        final String[] args,
+        final String commandName,
+        final String usageMessage
+    ) {
+        if (args.length != 2 && !(args.length == 3 && plugin.hasCategory(args[1]))) {
+            sender.sendMessage(ChatColor.RED + usageMessage);
+            return null;
+        }
+
+        final String expectedCategory = args.length == 3 ? plugin.normalizeCategory(args[1]) : null;
+        final String keyReference = args.length == 3 ? args[1] + ":" + args[2] : args[1];
+        return resolveConfiguredEntry(sender, keyReference, expectedCategory, commandName);
+    }
+
+    private @Nullable PlaceholderEntry resolveConfiguredEntry(
+        final CommandSender sender,
+        final String keyReference,
+        final @Nullable String expectedCategory,
+        final String commandName
+    ) {
+        final String key = plugin.normalizePlaceholderReference(keyReference);
+        final PlaceholderEntry entry = plugin.getConfiguredPlaceholderEntry(key).orElse(null);
+        if (entry == null) {
+            final String normalizedCategory = plugin.normalizeCategory(keyReference);
+            if (
+                expectedCategory == null
+                    && !normalizedCategory.isBlank()
+                    && key.equals(normalizedCategory)
+                    && plugin.hasCategory(normalizedCategory)
+            ) {
+                sender.sendMessage(
+                    ChatColor.RED
+                        + "Category '"
+                        + normalizedCategory
+                        + "' was found, but a placeholder key is missing."
+                );
+                sender.sendMessage(
+                    ChatColor.YELLOW
+                        + "Usage: /_placeholders "
+                        + commandName
+                        + " "
+                        + normalizedCategory
+                        + " <placeholder>"
+                );
+                return null;
+            }
+
+            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
+            return null;
+        }
+
+        if (expectedCategory != null && !entry.category().equals(expectedCategory)) {
+            sender.sendMessage(
+                ChatColor.RED
+                    + "Placeholder %onemb_"
+                    + key
+                    + "% exists in category '"
+                    + entry.category()
+                    + "', not '"
+                    + expectedCategory
+                    + "'."
+            );
+            return null;
+        }
+
+        return entry;
+    }
+
+    private String onOff(final boolean enabled) {
+        return enabled ? "on" : "off";
     }
 
     private String getActorName(final CommandSender sender) {
