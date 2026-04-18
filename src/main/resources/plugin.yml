@@ -7,9 +7,37 @@ depend: [PlaceholderAPI]
 commands:
   _placeholders:
     description: Lists and manages configured 1MB placeholders.
-    usage: /<command> [help|reload]
+    usage: /<command> [help|list|get|preview|search|add|set|remove|reload|backup|debug]
     permission: onemb.placeholders.admin
 permissions:
+  onemb.placeholders.*:
+    description: Grants every 1MB placeholder permission.
+    children:
+      onemb.placeholders.admin: true
+      onemb.placeholders.view: true
+      onemb.placeholders.edit: true
+      onemb.placeholders.reload: true
+      onemb.placeholders.search: true
+      onemb.placeholders.backup: true
+      onemb.placeholders.debug: true
   onemb.placeholders.admin:
-    description: Allows use of the /_placeholders administrative commands.
+    description: Base permission required to use any /_placeholders command.
+    default: op
+  onemb.placeholders.view:
+    description: Allows listing, getting, and previewing placeholders.
+    default: op
+  onemb.placeholders.edit:
+    description: Allows adding, setting, and removing placeholders in config.yml.
+    default: op
+  onemb.placeholders.reload:
+    description: Allows reloading placeholders from config.yml.
+    default: op
+  onemb.placeholders.search:
+    description: Allows searching configured placeholders.
+    default: op
+  onemb.placeholders.backup:
+    description: Allows creating config.yml backup files.
+    default: op
+  onemb.placeholders.debug:
+    description: Allows debug and maintenance commands such as merging missing default config nodes.
     default: op

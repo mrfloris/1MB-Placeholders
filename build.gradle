@@ -13,7 +13,7 @@ def placeholderApiVersion = providers.gradleProperty('placeholderApiVersion').ge
 def apiVersion = providers.gradleProperty('apiVersion').get()
 def jarBaseName = '1MB-Placeholders'
 def pluginVersion = project.version.toString()
-def jarFileName = "${jarBaseName}-v${pluginVersion}-j${targetJava}-${minecraftVersion}.jar"
+def jarFileName = "${jarBaseName}-v${pluginVersion}-${buildNumber}-j${targetJava}-${minecraftVersion}.jar"
 
 repositories {
     mavenCentral()
@@ -65,7 +65,7 @@ tasks.processResources {
 
 tasks.jar {
     archiveBaseName = jarBaseName
-    archiveVersion = "v${pluginVersion}-j${targetJava}-${minecraftVersion}"
+    archiveVersion = "v${pluginVersion}-${buildNumber}-j${targetJava}-${minecraftVersion}"
 
     manifest {
         attributes(
