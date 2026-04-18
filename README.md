@@ -71,11 +71,16 @@ Pre-compiled release jars can be downloaded from the GitHub Releases section in 
 - `/_placeholders <page>` lets players jump to another page.
 - `/_placeholders list [category] [page]` lists placeholders, optionally filtered by category.
 - `/_placeholders get <key>` shows stored and live details for one placeholder.
+- `/_placeholders get <category> <key>` does the same with an explicit category check.
 - `/_placeholders preview <key>` shows raw, configured, formatted, and plain previews.
+- `/_placeholders preview <category> <key>` does the same with an explicit category check.
 - `/_placeholders search <text> [category] [page]` searches keys, descriptions, and values.
-- `/_placeholders add [category:]<key> <value...>` saves a new static placeholder to config.yml.
+- `/_placeholders add <category> <key> <value...>` saves a new static placeholder to config.yml.
+- `/_placeholders add [category:]<key> <value...>` is still accepted for compatibility, but the spaced category form is the preferred syntax.
 - `/_placeholders set <key> <value...>` updates an existing static placeholder in config.yml.
+- `/_placeholders set <category> <key> <value...>` does the same with an explicit category check.
 - `/_placeholders remove <key>` removes a placeholder from config.yml.
+- `/_placeholders remove <category> <key>` does the same with an explicit category check.
 - `/_placeholders reload` reloads placeholders from config.yml.
 - `/_placeholders backup` creates a timestamped backup of config.yml.
 - `/_placeholders debug` shows plugin diagnostics, runtime details, and available debug actions.
@@ -104,12 +109,15 @@ Pre-compiled release jars can be downloaded from the GitHub Releases section in 
 - New bundled config defaults are not auto-inserted into an already existing live `config.yml`.
 - `/_placeholders debug config` can merge any missing bundled default nodes into the existing file without replacing your own edits or custom placeholders.
 - `/_placeholders debug` shows a support-friendly overview with plugin/build/runtime details, category counts, placeholder counts, and bundled config validation status.
+- `/_placeholders debug` also shows config paths, log/backup counts, formatting/listing settings, and up to five current validation issues.
 - `Listing.show-category`, `Listing.only-show-enabled-placeholders`, `Listing.show-category-description`, `Listing.show-type`, and `Listing.show-category-count` control how `/_placeholders` and `/_placeholders list` render output.
+- Commands that target placeholders accept bare keys such as `1mb_version`, full placeholder references such as `%onemb_1mb_version%`, and category-prefixed references such as `system:mc_version`.
 - Rotating placeholders are supported through `type: rotating` and a `values:` list.
 - In-game add, set, and remove commands write directly to `config.yml`, but the changes do not go live until you run `/_placeholders reload`.
 - Backups are written to `plugins/1MB-Placeholders/backups/`.
 - Admin actions such as add, set, remove, reload, backup, and debug config are written to `plugins/1MB-Placeholders/logs/actions.log`.
 - Log and backup purges keep a durable audit record in `plugins/1MB-Placeholders/logs/purge-history.log`.
+- The plugin validates placeholder structure on load and reload, and `/_placeholders debug` surfaces current validation issues.
 
 ## Placeholder Types
 
@@ -132,7 +140,7 @@ This is made for the 1MoreBlock.com Minecraft server, you're free to use this fo
 ## Credits
 
 Code created, and .jar made by PyroTempus. (v 1.0.0 build 519 for 1.19.x)
-Code updated by mrfloris and OpenAI. (v 1.2.0 build 529 for 1.21.11)
+Code updated by mrfloris and OpenAI. (v 1.2.1 build 533 for 1.21.11)
 
 ## Placeholders
 

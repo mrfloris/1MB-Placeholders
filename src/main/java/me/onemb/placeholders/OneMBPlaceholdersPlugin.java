@@ -1,5 +1,6 @@
 package me.onemb.placeholders;
 
+import java.util.ArrayList;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -47,9 +48,11 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
     private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.legacySection();
     private final PlainTextComponentSerializer plainSerializer = PlainTextComponentSerializer.plainText();
 
-    private FormattingSettings formattingSettings = new FormattingSettings(false, false, false);
-    private ListingSettings listingSettings = new ListingSettings(true, true, true, true, true);
+    private FormattingSettings formattingSettings = new FormattingSettings(true, true, false);
+    private ListingSettings listingSettings = new ListingSettings(true, false, true, true, true);
     private FileConfiguration runtimeConfig = new YamlConfiguration();
+    private List<String> validationIssues = List.of();
+    private String lastConfigLoadMessage = "Config not loaded yet.";
     private Map<String, PlaceholderCategory> categories = new LinkedHashMap<>();
     private Map<String, PlaceholderEntry> configuredPlaceholders = new LinkedHashMap<>();
     private Map<String, PlaceholderEntry> livePlaceholders = new LinkedHashMap<>();
@@ -142,6 +145,50 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         return listingSettings;
     }
 
+    public FormattingSettings getFormattingSettings() {
+        return formattingSettings;
+    }
+
+    public List<String> getValidationIssues() {
+        return List.copyOf(validationIssues);
+    }
+
+    public int getValidationIssueCount() {
+        return validationIssues.size();
+    }
+
+    public String getLastConfigLoadMessage() {
+        return lastConfigLoadMessage;
+    }
+
+    public Path getDataFolderPath() {
+        return getDataFolder().toPath();
+    }
+
+    public Path getConfigFilePath() {
+        return getDataFolderPath().resolve("config.yml");
+    }
+
+    public Path getBackupsDirectoryPath() {
+        return getDataFolderPath().resolve("backups");
+    }
+
+    public Path getLogsDirectoryPath() {
+        return getDataFolderPath().resolve("logs");
+    }
+
+    public long countBackupFiles() {
+        return countRegularFiles(getBackupsDirectoryPath(), null);
+    }
+
+    public long countClearableLogFiles() {
+        return countRegularFiles(getLogsDirectoryPath(), getLogsDirectoryPath().resolve("purge-history.log"));
+    }
+
+    public boolean hasPurgeHistoryLog() {
+        return Files.isRegularFile(getLogsDirectoryPath().resolve("purge-history.log"));
+    }
+
     public List<String> getCategoryNames() {
         return categories.keySet().stream().sorted().toList();
     }
@@ -227,6 +274,9 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
     public String normalizePlaceholderReference(final String input) {
         String trimmed = Objects.toString(input, "").trim().replace("%", "");
+        if (trimmed.contains(":")) {
+            trimmed = trimmed.substring(trimmed.indexOf(':') + 1);
+        }
         if (trimmed.toLowerCase(Locale.ROOT).startsWith("onemb_")) {
             trimmed = trimmed.substring("onemb_".length());
         }
@@ -319,6 +369,7 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
         final String sanitizedValue = sanitizeCommandValue(value);
         final PlaceholderEntry placeholderEntry = configuredPlaceholders.get(key);
+        final String previousValue = placeholderEntry == null ? null : getConfiguredOutput(placeholderEntry);
 
         if (placeholderEntry == null) {
             return ActionResult.failure("Placeholder %onemb_" + key + "% was not found.");
@@ -341,7 +392,15 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         saveConfigAndRefreshConfiguredState();
         audit(actor, "SET", "Updated %onemb_" + key + "% in config.yml (reload required).");
 
-        return ActionResult.success("Saved %onemb_" + key + "% to config.yml. Run /_placeholders reload when ready.");
+        return ActionResult.success(
+            "Saved %onemb_"
+                + key
+                + "% in category '"
+                + placeholderEntry.category()
+                + "' to config.yml (was '"
+                + summarizeValueForMessage(previousValue)
+                + "'). Run /_placeholders reload when ready."
+        );
     }
 
     public ActionResult removePlaceholderFromConfig(final String requestedKey, final String actor) {
@@ -356,7 +415,15 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         saveConfigAndRefreshConfiguredState();
         audit(actor, "REMOVE", "Removed %onemb_" + key + "% from config.yml (reload required).");
 
-        return ActionResult.success("Removed %onemb_" + key + "% from config.yml. Run /_placeholders reload when ready.");
+        return ActionResult.success(
+            "Removed %onemb_"
+                + key
+                + "% from category '"
+                + placeholderEntry.category()
+                + "' (type "
+                + placeholderEntry.type().name().toLowerCase(Locale.ROOT)
+                + "). Run /_placeholders reload when ready."
+        );
     }
 
     public ActionResult createBackup(final String actor) {
@@ -433,6 +500,15 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         }
 
         return ActionResult.success("Bundled default config.yml is valid.");
+    }
+
+    public ActionResult validateCurrentConfigFile() {
+        final ConfigLoadResult currentConfigResult = loadCurrentConfigFile();
+        if (currentConfigResult.configuration() == null) {
+            return ActionResult.failure(currentConfigResult.message());
+        }
+
+        return ActionResult.success(currentConfigResult.message());
     }
 
     public void audit(final String actor, final String action, final String details) {
@@ -541,6 +617,7 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
         final FormattingSettings loadedFormattingSettings = FormattingSettings.fromConfig(config);
         final ListingSettings loadedListingSettings = ListingSettings.fromConfig(config);
+        final List<String> parsedValidationIssues = new ArrayList<>();
         final Map<String, PlaceholderCategory> parsedCategories = new LinkedHashMap<>();
         final Map<String, PlaceholderEntry> parsedConfiguredPlaceholders = new LinkedHashMap<>();
         final Map<String, PlaceholderEntry> parsedLivePlaceholders = new LinkedHashMap<>();
@@ -552,6 +629,7 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
                     loadCategorySection(
                         childKey,
                         Objects.requireNonNull(rootSection.getConfigurationSection(childKey)),
+                        parsedValidationIssues,
                         parsedCategories,
                         parsedConfiguredPlaceholders,
                         parsedLivePlaceholders
@@ -560,22 +638,33 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
                     loadLegacyDefaultPlaceholder(
                         childKey,
                         rootSection,
+                        parsedValidationIssues,
                         parsedCategories,
                         parsedConfiguredPlaceholders,
                         parsedLivePlaceholders
                     );
                 }
             }
+        } else {
+            parsedValidationIssues.add("Placeholders section is missing from config.yml.");
         }
 
         formattingSettings = loadedFormattingSettings;
         listingSettings = loadedListingSettings;
         runtimeConfig = config;
+        validationIssues = List.copyOf(parsedValidationIssues);
+        lastConfigLoadMessage = configResult.message();
         categories = parsedCategories;
         configuredPlaceholders = parsedConfiguredPlaceholders;
 
         if (activateLivePlaceholders) {
             livePlaceholders = parsedLivePlaceholders;
+        }
+
+        if (!validationIssues.isEmpty()) {
+            getLogger().warning(
+                "Config validation found " + validationIssues.size() + " issue(s). Use /_placeholders debug for details."
+            );
         }
     }
 
@@ -708,11 +797,18 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
     private void loadCategorySection(
         final String rawCategoryName,
         final ConfigurationSection categorySection,
+        final List<String> parsedValidationIssues,
         final Map<String, PlaceholderCategory> parsedCategories,
         final Map<String, PlaceholderEntry> parsedConfiguredPlaceholders,
         final Map<String, PlaceholderEntry> parsedLivePlaceholders
     ) {
         final String categoryName = normalizeCategory(rawCategoryName);
+        if (!rawCategoryName.equals(categoryName)) {
+            parsedValidationIssues.add(
+                "Category '" + rawCategoryName + "' should use lowercase letters, numbers, and underscores."
+            );
+        }
+
         final PlaceholderCategory placeholderCategory = new PlaceholderCategory(
             categoryName,
             "Placeholders." + rawCategoryName,
@@ -724,6 +820,9 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
         final ConfigurationSection placeholdersSection = categorySection.getConfigurationSection("placeholders");
         if (placeholdersSection == null) {
+            parsedValidationIssues.add(
+                "Category '" + rawCategoryName + "' is missing its placeholders section."
+            );
             return;
         }
 
@@ -734,20 +833,25 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
                 key,
                 categoryName,
                 placeholderCategory.enabled(),
-                configPath
+                configPath,
+                parsedValidationIssues
             );
 
-            addParsedEntry(entry, parsedConfiguredPlaceholders, parsedLivePlaceholders);
+            addParsedEntry(entry, parsedConfiguredPlaceholders, parsedLivePlaceholders, parsedValidationIssues);
         }
     }
 
     private void loadLegacyDefaultPlaceholder(
         final String key,
         final ConfigurationSection rootSection,
+        final List<String> parsedValidationIssues,
         final Map<String, PlaceholderCategory> parsedCategories,
         final Map<String, PlaceholderEntry> parsedConfiguredPlaceholders,
         final Map<String, PlaceholderEntry> parsedLivePlaceholders
     ) {
+        parsedValidationIssues.add(
+            "Legacy placeholder '" + key + "' is still stored directly under Placeholders. Move it into a category."
+        );
         parsedCategories.putIfAbsent(
             "default",
             new PlaceholderCategory("default", "Placeholders.default", true, "Legacy placeholders without a category.")
@@ -766,7 +870,7 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
             List.of()
         );
 
-        addParsedEntry(entry, parsedConfiguredPlaceholders, parsedLivePlaceholders);
+        addParsedEntry(entry, parsedConfiguredPlaceholders, parsedLivePlaceholders, parsedValidationIssues);
     }
 
     private PlaceholderEntry loadPlaceholderEntry(
@@ -774,9 +878,13 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         final String rawKey,
         final String categoryName,
         final boolean categoryEnabled,
-        final String configPath
+        final String configPath,
+        final List<String> parsedValidationIssues
     ) {
         if (placeholdersSection.isString(rawKey) || !placeholdersSection.isConfigurationSection(rawKey)) {
+            parsedValidationIssues.add(
+                "Placeholder '" + rawKey + "' in category '" + categoryName + "' is using legacy shorthand syntax."
+            );
             return new PlaceholderEntry(
                 rawKey,
                 categoryName,
@@ -794,6 +902,11 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         final ConfigurationSection entrySection = Objects.requireNonNull(placeholdersSection.getConfigurationSection(rawKey));
         final String configuredType = entrySection.getString("type", "").toLowerCase(Locale.ROOT);
         final PlaceholderType placeholderType;
+        if (!configuredType.isBlank() && !"static".equals(configuredType) && !"builtin".equals(configuredType) && !"rotating".equals(configuredType)) {
+            parsedValidationIssues.add(
+                "Placeholder '" + rawKey + "' in category '" + categoryName + "' uses unknown type '" + configuredType + "'."
+            );
+        }
 
         if (entrySection.contains("builtin") || "builtin".equals(configuredType)) {
             placeholderType = PlaceholderType.BUILTIN;
@@ -801,6 +914,38 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
             placeholderType = PlaceholderType.ROTATING;
         } else {
             placeholderType = PlaceholderType.STATIC;
+        }
+
+        if (placeholderType == PlaceholderType.STATIC && !entrySection.contains("value")) {
+            parsedValidationIssues.add(
+                "Static placeholder '" + rawKey + "' in category '" + categoryName + "' is missing a value field."
+            );
+        }
+
+        if (placeholderType == PlaceholderType.BUILTIN) {
+            final String builtinSource = entrySection.getString("builtin", "");
+            if (builtinSource.isBlank()) {
+                parsedValidationIssues.add(
+                    "Built-in placeholder '" + rawKey + "' in category '" + categoryName + "' is missing its builtin source."
+                );
+            } else if (!isSupportedBuiltinSource(builtinSource)) {
+                parsedValidationIssues.add(
+                    "Built-in placeholder '" + rawKey + "' in category '" + categoryName + "' uses unknown source '" + builtinSource + "'."
+                );
+            }
+        }
+
+        if (placeholderType == PlaceholderType.ROTATING) {
+            if (entrySection.getStringList("values").isEmpty()) {
+                parsedValidationIssues.add(
+                    "Rotating placeholder '" + rawKey + "' in category '" + categoryName + "' has no values."
+                );
+            }
+            if (entrySection.getInt("interval-seconds", 60) < 1) {
+                parsedValidationIssues.add(
+                    "Rotating placeholder '" + rawKey + "' in category '" + categoryName + "' has interval-seconds below 1."
+                );
+            }
         }
 
         return new PlaceholderEntry(
@@ -820,9 +965,13 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
     private void addParsedEntry(
         final PlaceholderEntry entry,
         final Map<String, PlaceholderEntry> parsedConfiguredPlaceholders,
-        final Map<String, PlaceholderEntry> parsedLivePlaceholders
+        final Map<String, PlaceholderEntry> parsedLivePlaceholders,
+        final List<String> parsedValidationIssues
     ) {
         if (!isValidPlaceholderKey(entry.key())) {
+            parsedValidationIssues.add(
+                "Skipping invalid placeholder key '" + entry.key() + "' in category '" + entry.category() + "'."
+            );
             getLogger().warning(
                 "Skipping invalid placeholder key '" + entry.key() + "' in category '" + entry.category() + "'."
             );
@@ -831,6 +980,9 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
         final PlaceholderEntry existingEntry = parsedConfiguredPlaceholders.get(entry.key());
         if (existingEntry != null) {
+            parsedValidationIssues.add(
+                "Duplicate placeholder key '" + entry.key() + "' exists in categories '" + existingEntry.category() + "' and '" + entry.category() + "'."
+            );
             getLogger().warning(
                 "Skipping duplicate placeholder key '"
                     + entry.key()
@@ -886,6 +1038,31 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
                 getLogger().warning("Unknown built-in placeholder source: " + builtinSource);
                 yield null;
             }
+        };
+    }
+
+    private boolean isSupportedBuiltinSource(final String builtinSource) {
+        return switch (normalizeKey(builtinSource)) {
+            case "plugin_version",
+                "plugin_build",
+                "plugin_version_build",
+                "minecraft_version",
+                "java_version",
+                "java_runtime_version",
+                "paper_version",
+                "server_engine",
+                "server_name",
+                "online_players",
+                "max_players",
+                "day_name",
+                "day_of_week",
+                "day_of_month",
+                "month_name",
+                "month_number",
+                "year",
+                "date_iso",
+                "time_24h" -> true;
+            default -> false;
         };
     }
 
@@ -1002,6 +1179,26 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
     private void saveConfigAndRefreshConfiguredState() {
         saveConfig();
         refreshPlaceholderState(false);
+    }
+
+    private long countRegularFiles(final Path directory, final Path excludedPath) {
+        if (!Files.isDirectory(directory)) {
+            return 0L;
+        }
+
+        try (var files = Files.list(directory)) {
+            return files
+                .filter(Files::isRegularFile)
+                .filter(path -> excludedPath == null || !path.equals(excludedPath))
+                .count();
+        } catch (IOException exception) {
+            return 0L;
+        }
+    }
+
+    private String summarizeValueForMessage(final String value) {
+        final String text = Objects.toString(value, "<empty>");
+        return text.length() <= 80 ? text : text.substring(0, 80) + "...";
     }
 
     private void registerCommands() {
