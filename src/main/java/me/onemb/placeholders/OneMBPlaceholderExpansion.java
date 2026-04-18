@@ -2,7 +2,7 @@ package me.onemb.placeholders;
 
 import java.util.Optional;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
-import org.bukkit.entity.Player;
+import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.NotNull;
 
 public final class OneMBPlaceholderExpansion extends PlaceholderExpansion {
@@ -34,7 +34,7 @@ public final class OneMBPlaceholderExpansion extends PlaceholderExpansion {
     }
 
     @Override
-    public String onPlaceholderRequest(final Player player, final @NotNull String params) {
+    public String onRequest(final OfflinePlayer player, final @NotNull String params) {
         final Optional<String> placeholderValue = plugin.getPlaceholder(params);
         return placeholderValue.orElse(null);
     }

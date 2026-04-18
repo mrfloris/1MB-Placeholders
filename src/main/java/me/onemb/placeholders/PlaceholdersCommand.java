@@ -1,20 +1,31 @@
 package me.onemb.placeholders;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class PlaceholdersCommand implements CommandExecutor, TabCompleter {
 
     private static final String ADMIN_PERMISSION = "onemb.placeholders.admin";
+    private static final String VIEW_PERMISSION = "onemb.placeholders.view";
+    private static final String EDIT_PERMISSION = "onemb.placeholders.edit";
+    private static final String RELOAD_PERMISSION = "onemb.placeholders.reload";
+    private static final String SEARCH_PERMISSION = "onemb.placeholders.search";
+    private static final String BACKUP_PERMISSION = "onemb.placeholders.backup";
+    private static final String DEBUG_PERMISSION = "onemb.placeholders.debug";
+    private static final int PAGE_SIZE = 8;
 
     private final OneMBPlaceholdersPlugin plugin;
 
@@ -35,14 +46,86 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         }
 
         if (args.length == 0) {
-            sendPlaceholderList(sender);
+            if (!requirePermission(sender, VIEW_PERMISSION)) {
+                return true;
+            }
+
+            sendPlaceholderList(sender, null, 0, null);
+            return true;
+        }
+
+        if (isInteger(args[0])) {
+            if (!requirePermission(sender, VIEW_PERMISSION)) {
+                return true;
+            }
+
+            sendPlaceholderList(sender, null, parsePage(args[0]), null);
             return true;
         }
 
         final String subCommand = args[0].toLowerCase(Locale.ROOT);
         switch (subCommand) {
             case "help" -> sendHelp(sender, label);
-            case "reload" -> reloadPlaceholders(sender);
+            case "list" -> {
+                if (!requirePermission(sender, VIEW_PERMISSION)) {
+                    return true;
+                }
+                handleList(sender, args);
+            }
+            case "get" -> {
+                if (!requirePermission(sender, VIEW_PERMISSION)) {
+                    return true;
+                }
+                handleGet(sender, args);
+            }
+            case "preview" -> {
+                if (!requirePermission(sender, VIEW_PERMISSION)) {
+                    return true;
+                }
+                handlePreview(sender, args);
+            }
+            case "search" -> {
+                if (!requirePermission(sender, SEARCH_PERMISSION)) {
+                    return true;
+                }
+                handleSearch(sender, args);
+            }
+            case "add" -> {
+                if (!requirePermission(sender, EDIT_PERMISSION)) {
+                    return true;
+                }
+                handleAdd(sender, args);
+            }
+            case "set" -> {
+                if (!requirePermission(sender, EDIT_PERMISSION)) {
+                    return true;
+                }
+                handleSet(sender, args);
+            }
+            case "remove" -> {
+                if (!requirePermission(sender, EDIT_PERMISSION)) {
+                    return true;
+                }
+                handleRemove(sender, args);
+            }
+            case "reload" -> {
+                if (!requirePermission(sender, RELOAD_PERMISSION)) {
+                    return true;
+                }
+                reloadPlaceholders(sender);
+            }
+            case "backup" -> {
+                if (!requirePermission(sender, BACKUP_PERMISSION)) {
+                    return true;
+                }
+                backupConfig(sender);
+            }
+            case "debug" -> {
+                if (!requirePermission(sender, DEBUG_PERMISSION)) {
+                    return true;
+                }
+                handleDebug(sender, args);
+            }
             default -> {
                 sender.sendMessage(ChatColor.RED + "Unknown subcommand. Use /" + label + " help.");
                 sendHelp(sender, label);
@@ -63,26 +146,221 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return List.of();
         }
 
-        if (args.length != 1) {
-            return List.of();
+        if (args.length == 1) {
+            final String currentInput = args[0].toLowerCase(Locale.ROOT);
+            final List<String> completions = new ArrayList<>();
+
+            addCompletionIfPermitted(sender, completions, currentInput, "help", ADMIN_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "list", VIEW_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "get", VIEW_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "preview", VIEW_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "search", SEARCH_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "add", EDIT_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "set", EDIT_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "remove", EDIT_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "reload", RELOAD_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "backup", BACKUP_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "debug", DEBUG_PERMISSION);
+
+            return completions;
         }
 
-        final String currentInput = args[0].toLowerCase(Locale.ROOT);
-        final List<String> completions = new ArrayList<>();
-
-        if ("help".startsWith(currentInput)) {
-            completions.add("help");
-        }
-
-        if ("reload".startsWith(currentInput)) {
-            completions.add("reload");
-        }
-
-        return completions;
+        final String subCommand = args[0].toLowerCase(Locale.ROOT);
+        return switch (subCommand) {
+            case "list" -> completeListArguments(args);
+            case "get", "set", "remove", "preview" -> completeKeys(args);
+            case "add" -> completeAddArguments(args);
+            case "search" -> completeSearchArguments(args);
+            case "debug" -> completeDebugArguments(args);
+            default -> List.of();
+        };
     }
 
-    private void sendPlaceholderList(final CommandSender sender) {
-        final Map<String, String> placeholders = plugin.getPlaceholders();
+    private boolean requirePermission(final CommandSender sender, final String permission) {
+        if (sender.hasPermission(permission)) {
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.RED + "You do not have permission: " + permission);
+        return false;
+    }
+
+    private void addCompletionIfPermitted(
+        final CommandSender sender,
+        final List<String> completions,
+        final String currentInput,
+        final String completion,
+        final String permission
+    ) {
+        if (sender.hasPermission(permission) && completion.startsWith(currentInput)) {
+            completions.add(completion);
+        }
+    }
+
+    private void handleList(final CommandSender sender, final String[] args) {
+        String category = null;
+        int page = 0;
+
+        for (int index = 1; index < args.length; index++) {
+            if (isInteger(args[index])) {
+                page = parsePage(args[index]);
+                continue;
+            }
+
+            if ("all".equalsIgnoreCase(args[index])) {
+                category = null;
+                continue;
+            }
+
+            final String normalizedCategory = plugin.normalizeCategory(args[index]);
+            if (!plugin.hasCategory(normalizedCategory)) {
+                sender.sendMessage(ChatColor.RED + "Unknown category: " + args[index]);
+                return;
+            }
+
+            category = normalizedCategory;
+        }
+
+        sendPlaceholderList(sender, category, page, null);
+    }
+
+    private void handleGet(final CommandSender sender, final String[] args) {
+        if (args.length != 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders get <key>");
+            return;
+        }
+
+        final String key = plugin.normalizePlaceholderReference(args[1]);
+        final PlaceholderEntry entry = plugin.getConfiguredPlaceholderEntry(key).orElse(null);
+        if (entry == null) {
+            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
+            return;
+        }
+
+        sender.sendMessage(ChatColor.GOLD + "Placeholder: " + ChatColor.YELLOW + "%onemb_" + entry.key() + "%");
+        sender.sendMessage(ChatColor.GRAY + "  Category: " + ChatColor.WHITE + entry.category() + describeEntryFlags(entry));
+        sender.sendMessage(ChatColor.GRAY + "  Type: " + ChatColor.WHITE + entry.type().name().toLowerCase(Locale.ROOT));
+        if (!entry.description().isBlank()) {
+            sender.sendMessage(ChatColor.GRAY + "  Description: " + ChatColor.WHITE + entry.description());
+        }
+        sender.sendMessage(ChatColor.GRAY + "  Stored: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getStoredValueSummary(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Configured output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getConfiguredOutput(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Live output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getLiveOutput(entry.key())) + "'");
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Pending reload: "
+                + ChatColor.WHITE
+                + (plugin.hasPendingReloadChange(entry.key()) ? "yes" : "no")
+        );
+    }
+
+    private void handlePreview(final CommandSender sender, final String[] args) {
+        if (args.length != 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders preview <key>");
+            return;
+        }
+
+        final String key = plugin.normalizePlaceholderReference(args[1]);
+        final PlaceholderEntry entry = plugin.getConfiguredPlaceholderEntry(key).orElse(null);
+        if (entry == null) {
+            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
+            return;
+        }
+
+        sender.sendMessage(ChatColor.GOLD + "Preview: " + ChatColor.YELLOW + "%onemb_" + entry.key() + "%");
+        sender.sendMessage(ChatColor.GRAY + "  Stored: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getStoredValueSummary(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Configured output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getConfiguredOutput(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Formatted preview: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getFormattedPreview(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Plain preview: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getPlainPreview(entry)) + "'");
+        sender.sendMessage(ChatColor.GRAY + "  Live output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getLiveOutput(entry.key())) + "'");
+    }
+
+    private void handleSearch(final CommandSender sender, final String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders search <text> [category] [page]");
+            return;
+        }
+
+        int page = 0;
+        int endIndexExclusive = args.length;
+        String category = null;
+
+        if (endIndexExclusive > 2 && isInteger(args[endIndexExclusive - 1])) {
+            page = parsePage(args[endIndexExclusive - 1]);
+            endIndexExclusive--;
+        }
+
+        if (endIndexExclusive > 2 && plugin.hasCategory(args[endIndexExclusive - 1])) {
+            category = plugin.normalizeCategory(args[endIndexExclusive - 1]);
+            endIndexExclusive--;
+        }
+
+        final String query = String.join(" ", slice(args, 1, endIndexExclusive)).trim();
+        if (query.isBlank()) {
+            sender.sendMessage(ChatColor.RED + "Search text could not be empty.");
+            return;
+        }
+
+        if (!plugin.isSearchLengthValid(query)) {
+            sender.sendMessage(ChatColor.RED + "Search text may be at most 128 characters.");
+            return;
+        }
+
+        sendPlaceholderList(sender, category, page, query);
+    }
+
+    private void handleAdd(final CommandSender sender, final String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders add [category:]<key> <value...>");
+            return;
+        }
+
+        final String[] categoryAndKey = splitCategoryAndKey(args[1]);
+        final String category = categoryAndKey[0];
+        final String key = categoryAndKey[1];
+        final String value = String.join(" ", slice(args, 2, args.length));
+        final ActionResult result = plugin.addPlaceholderToConfig(category, key, value, getActorName(sender));
+
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void handleSet(final CommandSender sender, final String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders set <key> <value...>");
+            return;
+        }
+
+        final String key = args[1];
+        final String value = String.join(" ", slice(args, 2, args.length));
+        final ActionResult result = plugin.setPlaceholderInConfig(key, value, getActorName(sender));
+
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void handleRemove(final CommandSender sender, final String[] args) {
+        if (args.length != 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders remove <key>");
+            return;
+        }
+
+        final ActionResult result = plugin.removePlaceholderFromConfig(args[1], getActorName(sender));
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void sendPlaceholderList(
+        final CommandSender sender,
+        final @Nullable String category,
+        final int requestedPage,
+        final @Nullable String searchQuery
+    ) {
+        final String normalizedQuery = searchQuery == null ? null : searchQuery.toLowerCase(Locale.ROOT);
+        final ListingSettings listingSettings = plugin.getListingSettings();
+        final List<PlaceholderEntry> matches = plugin.getConfiguredPlaceholders().stream()
+            .filter(entry -> category == null || entry.category().equals(category))
+            .filter(entry -> !listingSettings.onlyShowEnabledPlaceholders() || entry.isLiveEligible())
+            .filter(entry -> normalizedQuery == null || matchesQuery(entry, normalizedQuery))
+            .sorted(Comparator.comparing(PlaceholderEntry::category).thenComparing(PlaceholderEntry::key))
+            .toList();
 
         sender.sendMessage(
             ChatColor.GOLD
@@ -96,20 +374,210 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + plugin.getMinecraftVersion()
                 + ")"
         );
-        if (placeholders.isEmpty()) {
-            sender.sendMessage(ChatColor.GRAY + "  No placeholders are currently configured.");
+
+        if (matches.isEmpty()) {
+            sender.sendMessage(ChatColor.GRAY + "  No placeholders matched that request.");
             return;
         }
 
-        placeholders.forEach((key, value) ->
-            sender.sendMessage(ChatColor.YELLOW + "  %onemb_" + key + "%: " + ChatColor.WHITE + "'" + value + "'")
-        );
+        final List<PlaceholderEntry> visibleEntries;
+        if (sender instanceof Player) {
+            final int totalPages = Math.max(1, (int) Math.ceil(matches.size() / (double) PAGE_SIZE));
+            final int page = requestedPage <= 0 ? 1 : requestedPage;
+            if (page < 1 || page > totalPages) {
+                sender.sendMessage(ChatColor.RED + "Page must be between 1 and " + totalPages + ".");
+                return;
+            }
+
+            final int startIndex = (page - 1) * PAGE_SIZE;
+            final int endIndex = Math.min(startIndex + PAGE_SIZE, matches.size());
+            visibleEntries = matches.subList(startIndex, endIndex);
+
+            sender.sendMessage(
+                ChatColor.GRAY
+                    + "  Showing "
+                    + ChatColor.WHITE
+                    + (startIndex + 1)
+                    + "-"
+                    + endIndex
+                    + "/"
+                    + matches.size()
+                    + ChatColor.GRAY
+                    + " (page "
+                    + page
+                    + "/"
+                    + totalPages
+                    + ", "
+                    + PAGE_SIZE
+                    + " per page)"
+            );
+        } else {
+            visibleEntries = matches;
+            sender.sendMessage(
+                ChatColor.GRAY
+                    + "  Showing "
+                    + ChatColor.WHITE
+                    + visibleEntries.size()
+                    + "/"
+                    + matches.size()
+                    + ChatColor.GRAY
+                    + " (console output, pagination disabled)"
+            );
+        }
+
+        if (category != null) {
+            sender.sendMessage(ChatColor.GRAY + "  Category filter: " + ChatColor.WHITE + category);
+        }
+
+        if (searchQuery != null) {
+            sender.sendMessage(ChatColor.GRAY + "  Search filter: " + ChatColor.WHITE + searchQuery);
+        }
+
+        sendFormattedPlaceholderEntries(sender, visibleEntries, listingSettings);
     }
 
     private void reloadPlaceholders(final CommandSender sender) {
         plugin.reloadPlaceholders();
+        plugin.audit(getActorName(sender), "RELOAD", "Reloaded placeholders from config.yml.");
+        sender.sendMessage(ChatColor.GREEN + "Reloaded placeholders from config.yml.");
+    }
+
+    private void backupConfig(final CommandSender sender) {
+        final ActionResult result = plugin.createBackup(getActorName(sender));
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void handleDebug(final CommandSender sender, final String[] args) {
+        if (args.length == 1) {
+            sendDebugOverview(sender);
+            return;
+        }
+
+        if (args.length == 2 && "config".equalsIgnoreCase(args[1])) {
+            final ActionResult result = plugin.mergeMissingDefaultConfig(getActorName(sender));
+            sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+            return;
+        }
+
+        if (args.length == 3 && ("clear".equalsIgnoreCase(args[1]) || "purge".equalsIgnoreCase(args[1]))) {
+            handleDebugClear(sender, args[2]);
+            return;
+        }
+
+        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|clear|purge]");
+        sendDebugOverview(sender);
+    }
+
+    private void handleDebugClear(final CommandSender sender, final String target) {
+        final String normalizedTarget = target.toLowerCase(Locale.ROOT);
+        final ActionResult result = switch (normalizedTarget) {
+            case "log", "logs" -> plugin.clearLogs(getActorName(sender));
+            case "backup", "backups" -> plugin.clearBackups(getActorName(sender));
+            default -> ActionResult.failure("Usage: /_placeholders debug clear <logs|backups>");
+        };
+
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void sendDebugOverview(final CommandSender sender) {
+        final ActionResult bundledConfigStatus = plugin.validateBundledDefaultConfig();
+
         sender.sendMessage(
-            ChatColor.GREEN + "Reloaded " + plugin.getPlaceholders().size() + " placeholder(s) from config.yml."
+            ChatColor.GOLD
+                + "1MB Placeholders debug: "
+                + ChatColor.WHITE
+                + "(v"
+                + plugin.getPluginVersion()
+                + " build "
+                + plugin.getBuildNumber()
+                + ")"
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Plugin: "
+                + ChatColor.WHITE
+                + plugin.getDescription().getName()
+                + " v"
+                + plugin.getPluginVersion()
+                + " build "
+                + plugin.getBuildNumber()
+        );
+        sender.sendMessage(ChatColor.GRAY + "  Credits: " + ChatColor.WHITE + "PyroTempus, mrfloris, and OpenAI");
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Authors metadata: "
+                + ChatColor.WHITE
+                + String.join(", ", plugin.getDescription().getAuthors())
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Built for: "
+                + ChatColor.WHITE
+                + "Java "
+                + plugin.getTargetJavaVersion()
+                + " / Minecraft "
+                + plugin.getMinecraftVersion()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Runtime Java: "
+                + ChatColor.WHITE
+                + System.getProperty("java.version", "unknown")
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Server engine: "
+                + ChatColor.WHITE
+                + plugin.getServer().getVersion()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Runtime Minecraft: "
+                + ChatColor.WHITE
+                + plugin.getServer().getMinecraftVersion()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Config file: "
+                + ChatColor.WHITE
+                + plugin.getConfiguredCategoryCount()
+                + " categories, "
+                + plugin.getEnabledCategoryCount()
+                + " enabled, "
+                + plugin.getDisabledCategoryCount()
+                + " disabled, "
+                + plugin.getConfiguredPlaceholderCount()
+                + " placeholders total"
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Active placeholders: "
+                + ChatColor.WHITE
+                + plugin.getLivePlaceholderCount()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Bundled defaults: "
+                + (bundledConfigStatus.success() ? ChatColor.GREEN : ChatColor.RED)
+                + bundledConfigStatus.message()
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /_placeholders debug config"
+                + ChatColor.WHITE
+                + " - Add missing bundled default config nodes without overwriting existing values. Creates a backup first."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /_placeholders debug clear logs"
+                + ChatColor.WHITE
+                + " - Clear log files while keeping the persistent purge-history.log record."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /_placeholders debug clear backups"
+                + ChatColor.WHITE
+                + " - Clear saved backup files and audit who cleared them."
         );
     }
 
@@ -124,8 +592,289 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + plugin.getBuildNumber()
                 + ")"
         );
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + ChatColor.WHITE + " - List all configured placeholders and their values.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + ChatColor.WHITE + " - List placeholders. Players get pages, console gets all results.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " <page>" + ChatColor.WHITE + " - Players can jump to another page of placeholders.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " list [category] [page]" + ChatColor.WHITE + " - List placeholders, optionally filtered by category.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " get <key>" + ChatColor.WHITE + " - Show stored and live details for one placeholder.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " preview <key>" + ChatColor.WHITE + " - Show raw, formatted, and plain previews.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " search <text> [category] [page]" + ChatColor.WHITE + " - Search keys, descriptions, and values.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add [category:]<key> <value...>" + ChatColor.WHITE + " - Save a new static placeholder to config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <key> <value...>" + ChatColor.WHITE + " - Update an existing static placeholder in config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <key>" + ChatColor.WHITE + " - Remove a placeholder from config.yml.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " help" + ChatColor.WHITE + " - Show this help message.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " reload" + ChatColor.WHITE + " - Reload placeholders from config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " backup" + ChatColor.WHITE + " - Create a backup copy of config.yml.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " debug" + ChatColor.WHITE + " - Show plugin diagnostics and available debug actions.");
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /"
+                + label
+                + " debug config"
+                + ChatColor.WHITE
+                + " - Add any missing bundled default config nodes without overwriting existing values."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /"
+                + label
+                + " debug clear <logs|backups>"
+                + ChatColor.WHITE
+                + " - Clear logs or backups and keep an audit trail."
+        );
+    }
+
+    private boolean matchesQuery(final PlaceholderEntry entry, final String query) {
+        final String haystack = (
+            entry.key()
+                + " "
+                + "onemb_"
+                + entry.key()
+                + " "
+                + "%onemb_"
+                + entry.key()
+                + "% "
+                + entry.category()
+                + " "
+                + entry.description()
+                + " "
+                + plugin.getStoredValueSummary(entry)
+                + " "
+                + safeDisplay(plugin.getConfiguredOutput(entry))
+        ).toLowerCase(Locale.ROOT);
+
+        return haystack.contains(query);
+    }
+
+    private void sendFormattedPlaceholderEntries(
+        final CommandSender sender,
+        final List<PlaceholderEntry> entries,
+        final ListingSettings listingSettings
+    ) {
+        if (!listingSettings.showCategory()) {
+            for (PlaceholderEntry entry : entries) {
+                sender.sendMessage(buildPlaceholderLine(entry, listingSettings, false));
+            }
+            return;
+        }
+
+        final Map<String, List<PlaceholderEntry>> groupedEntries = new LinkedHashMap<>();
+        for (PlaceholderEntry entry : entries) {
+            groupedEntries.computeIfAbsent(entry.category(), ignored -> new ArrayList<>()).add(entry);
+        }
+
+        for (Map.Entry<String, List<PlaceholderEntry>> categoryEntry : groupedEntries.entrySet()) {
+            sender.sendMessage(buildCategoryHeader(categoryEntry.getKey(), categoryEntry.getValue(), listingSettings));
+            for (PlaceholderEntry entry : categoryEntry.getValue()) {
+                sender.sendMessage(buildPlaceholderLine(entry, listingSettings, true));
+            }
+        }
+    }
+
+    private String buildCategoryHeader(
+        final String categoryName,
+        final List<PlaceholderEntry> entries,
+        final ListingSettings listingSettings
+    ) {
+        final PlaceholderCategory category = plugin.getCategory(categoryName).orElse(null);
+        final StringBuilder line = new StringBuilder(
+            ChatColor.YELLOW + "  [" + categoryName + "]"
+        );
+
+        final List<String> metadata = new ArrayList<>();
+        if (category != null && !listingSettings.onlyShowEnabledPlaceholders()) {
+            metadata.add(category.enabled() ? "enabled" : "disabled");
+        }
+
+        if (listingSettings.showCategoryCount()) {
+            metadata.add(entries.size() + " shown");
+        }
+
+        if (!metadata.isEmpty()) {
+            line.append(ChatColor.GRAY).append(" (").append(String.join(", ", metadata)).append(")");
+        }
+
+        if (
+            listingSettings.showCategoryDescription()
+                && category != null
+                && !category.description().isBlank()
+        ) {
+            line.append(ChatColor.GRAY).append(" - ").append(ChatColor.WHITE).append(category.description());
+        }
+
+        return line.toString();
+    }
+
+    private String buildPlaceholderLine(
+        final PlaceholderEntry entry,
+        final ListingSettings listingSettings,
+        final boolean categoryAlreadyShown
+    ) {
+        final StringBuilder line = new StringBuilder();
+        line.append(ChatColor.YELLOW);
+        line.append(categoryAlreadyShown ? "    " : "  ");
+
+        if (!categoryAlreadyShown && listingSettings.showCategory()) {
+            line.append("[").append(entry.category()).append("] ");
+        }
+
+        if (listingSettings.showType()) {
+            line.append(ChatColor.GRAY)
+                .append("[")
+                .append(entry.type().name().toLowerCase(Locale.ROOT))
+                .append("] ")
+                .append(ChatColor.YELLOW);
+        }
+
+        line.append("%onemb_").append(entry.key()).append("%");
+
+        final String flags = describeEntryFlags(entry, categoryAlreadyShown);
+        if (!flags.isBlank()) {
+            line.append(ChatColor.GRAY).append(" [").append(flags).append("]");
+        }
+
+        line.append(ChatColor.GRAY).append(": ").append(ChatColor.WHITE).append("'").append(safeDisplay(plugin.getConfiguredOutput(entry))).append("'");
+        return line.toString();
+    }
+
+    private String describeEntryFlags(final PlaceholderEntry entry, final boolean categoryAlreadyShown) {
+        final List<String> flags = new ArrayList<>();
+
+        if (!entry.categoryEnabled() && !categoryAlreadyShown) {
+            flags.add("category disabled");
+        }
+
+        if (entry.type() == PlaceholderType.ROTATING && !entry.rotatingEnabled()) {
+            flags.add("rotating disabled");
+        }
+
+        if (plugin.hasPendingReloadChange(entry.key())) {
+            flags.add("pending reload");
+        }
+
+        if (flags.isEmpty()) {
+            return "";
+        }
+
+        return String.join(", ", flags);
+    }
+
+    private String describeEntryFlags(final PlaceholderEntry entry) {
+        final String flags = describeEntryFlags(entry, false);
+        return flags.isBlank() ? "" : " [" + flags + "]";
+    }
+
+    private String[] splitCategoryAndKey(final String input) {
+        if (!input.contains(":")) {
+            return new String[] {"default", input};
+        }
+
+        final String[] parts = input.split(":", 2);
+        return new String[] {
+            parts[0].isBlank() ? "default" : parts[0],
+            parts[1]
+        };
+    }
+
+    private List<String> completeListArguments(final String[] args) {
+        if (args.length == 2) {
+            return matchToken(args[1], plugin.getCategoryNames());
+        }
+
+        if (args.length == 3 && plugin.hasCategory(args[1])) {
+            return matchToken(args[2], List.of("1", "2", "3"));
+        }
+
+        return List.of();
+    }
+
+    private List<String> completeKeys(final String[] args) {
+        if (args.length == 2) {
+            return matchToken(
+                args[1],
+                plugin.getConfiguredPlaceholders().stream()
+                    .map(PlaceholderEntry::key)
+                    .sorted()
+                    .toList()
+            );
+        }
+
+        return List.of();
+    }
+
+    private List<String> completeAddArguments(final String[] args) {
+        if (args.length == 2) {
+            final List<String> suggestions = new ArrayList<>();
+            suggestions.add("default:");
+            plugin.getCategoryNames().forEach(category -> suggestions.add(category + ":"));
+            return matchToken(args[1], suggestions);
+        }
+
+        return List.of();
+    }
+
+    private List<String> completeSearchArguments(final String[] args) {
+        if (args.length == 3) {
+            return matchToken(args[2], plugin.getCategoryNames());
+        }
+
+        if (args.length == 4 && plugin.hasCategory(args[2])) {
+            return matchToken(args[3], List.of("1", "2", "3"));
+        }
+
+        return List.of();
+    }
+
+    private List<String> completeDebugArguments(final String[] args) {
+        if (args.length == 2) {
+            return matchToken(args[1], List.of("config", "clear", "purge"));
+        }
+
+        if (args.length == 3 && ("clear".equalsIgnoreCase(args[1]) || "purge".equalsIgnoreCase(args[1]))) {
+            return matchToken(args[2], List.of("logs", "backups", "backup"));
+        }
+
+        return List.of();
+    }
+
+    private List<String> matchToken(final String input, final List<String> candidates) {
+        final String normalizedInput = input.toLowerCase(Locale.ROOT);
+        return candidates.stream()
+            .filter(candidate -> candidate.toLowerCase(Locale.ROOT).startsWith(normalizedInput))
+            .distinct()
+            .sorted()
+            .collect(Collectors.toList());
+    }
+
+    private String[] slice(final String[] args, final int startInclusive, final int endExclusive) {
+        final List<String> slice = new ArrayList<>();
+        for (int index = startInclusive; index < endExclusive; index++) {
+            slice.add(args[index]);
+        }
+        return slice.toArray(String[]::new);
+    }
+
+    private boolean isInteger(final String value) {
+        try {
+            Integer.parseInt(value);
+            return true;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
+
+    private int parsePage(final String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException exception) {
+            return 0;
+        }
+    }
+
+    private String safeDisplay(final @Nullable String value) {
+        return value == null ? "<not active>" : value;
+    }
+
+    private String getActorName(final CommandSender sender) {
+        return sender.getName();
     }
 }
