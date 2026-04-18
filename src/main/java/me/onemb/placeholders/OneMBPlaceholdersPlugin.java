@@ -426,6 +426,37 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         );
     }
 
+    public ActionResult setCategoryEnabled(final String requestedCategory, final boolean enabled, final String actor) {
+        final String category = normalizeCategory(requestedCategory);
+        final PlaceholderCategory placeholderCategory = categories.get(category);
+
+        if (placeholderCategory == null) {
+            return ActionResult.failure("Category '" + category + "' was not found.");
+        }
+
+        if (placeholderCategory.enabled() == enabled) {
+            return ActionResult.success(
+                "Category '"
+                    + category
+                    + "' is already "
+                    + (enabled ? "enabled" : "disabled")
+                    + "."
+            );
+        }
+
+        getConfig().set(placeholderCategory.configPath() + ".enabled", enabled);
+        saveConfigAndRefreshConfiguredState();
+        audit(actor, "CATEGORY", "Set category '" + category + "' enabled=" + enabled + " (reload required).");
+
+        return ActionResult.success(
+            "Category '"
+                + category
+                + "' is now "
+                + (enabled ? "enabled" : "disabled")
+                + " in config.yml. Run /_placeholders reload when ready."
+        );
+    }
+
     public ActionResult createBackup(final String actor) {
         final Path configPath = getDataFolder().toPath().resolve("config.yml");
         final Path backupsDirectory = getDataFolder().toPath().resolve("backups");

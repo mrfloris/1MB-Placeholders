@@ -96,6 +96,12 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 }
                 handleAdd(sender, args);
             }
+            case "category" -> {
+                if (!requirePermission(sender, EDIT_PERMISSION)) {
+                    return true;
+                }
+                handleCategory(sender, args);
+            }
             case "set" -> {
                 if (!requirePermission(sender, EDIT_PERMISSION)) {
                     return true;
@@ -156,6 +162,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             addCompletionIfPermitted(sender, completions, currentInput, "preview", VIEW_PERMISSION);
             addCompletionIfPermitted(sender, completions, currentInput, "search", SEARCH_PERMISSION);
             addCompletionIfPermitted(sender, completions, currentInput, "add", EDIT_PERMISSION);
+            addCompletionIfPermitted(sender, completions, currentInput, "category", EDIT_PERMISSION);
             addCompletionIfPermitted(sender, completions, currentInput, "set", EDIT_PERMISSION);
             addCompletionIfPermitted(sender, completions, currentInput, "remove", EDIT_PERMISSION);
             addCompletionIfPermitted(sender, completions, currentInput, "reload", RELOAD_PERMISSION);
@@ -170,6 +177,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             case "list" -> completeListArguments(args);
             case "get", "set", "remove", "preview" -> completeKeyArguments(args);
             case "add" -> completeAddArguments(args);
+            case "category" -> completeCategoryArguments(args);
             case "search" -> completeSearchArguments(args);
             case "debug" -> completeDebugArguments(args);
             default -> List.of();
@@ -355,6 +363,29 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
         final ActionResult result = plugin.setPlaceholderInConfig(keyReference, value, getActorName(sender));
 
+        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+    }
+
+    private void handleCategory(final CommandSender sender, final String[] args) {
+        if (args.length != 3) {
+            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders category <category> <true|false>");
+            return;
+        }
+
+        final String category = plugin.normalizeCategory(args[1]);
+        if (!plugin.hasCategory(category)) {
+            sender.sendMessage(ChatColor.RED + "Unknown category: " + args[1]);
+            return;
+        }
+
+        final @Nullable Boolean enabled = parseBooleanArgument(args[2]);
+        if (enabled == null) {
+            sender.sendMessage(ChatColor.RED + "Category state must be true or false.");
+            sender.sendMessage(ChatColor.YELLOW + "Usage: /_placeholders category <category> <true|false>");
+            return;
+        }
+
+        final ActionResult result = plugin.setCategoryEnabled(category, enabled, getActorName(sender));
         sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
     }
 
@@ -726,6 +757,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " search <text> [category] [page]" + ChatColor.WHITE + " - Search keys, descriptions, and values.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add [category:]<key> <value...>" + ChatColor.WHITE + " - Save a new static placeholder to config.yml.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add <category> <key> <value...>" + ChatColor.WHITE + " - Same as add, using an explicit existing category.");
+        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " category <category> <true|false>" + ChatColor.WHITE + " - Enable or disable a placeholder category in config.yml.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <key> <value...>" + ChatColor.WHITE + " - Update an existing static placeholder in config.yml.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <category> <key> <value...>" + ChatColor.WHITE + " - Same as set, with an explicit category.");
         sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <key>" + ChatColor.WHITE + " - Remove a placeholder from config.yml.");
@@ -951,6 +983,18 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         return List.of();
     }
 
+    private List<String> completeCategoryArguments(final String[] args) {
+        if (args.length == 2) {
+            return matchToken(args[1], plugin.getCategoryNames());
+        }
+
+        if (args.length == 3 && plugin.hasCategory(args[1])) {
+            return matchToken(args[2], List.of("true", "false"));
+        }
+
+        return List.of();
+    }
+
     private List<String> completeSearchArguments(final String[] args) {
         if (args.length == 3) {
             return matchToken(args[2], plugin.getCategoryNames());
@@ -1007,6 +1051,14 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         } catch (NumberFormatException exception) {
             return 0;
         }
+    }
+
+    private @Nullable Boolean parseBooleanArgument(final String value) {
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "true", "on", "enable", "enabled", "yes" -> true;
+            case "false", "off", "disable", "disabled", "no" -> false;
+            default -> null;
+        };
     }
 
     private String safeDisplay(final @Nullable String value) {
