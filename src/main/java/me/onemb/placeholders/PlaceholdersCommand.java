@@ -7,6 +7,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -26,6 +32,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     private static final String BACKUP_PERMISSION = "onemb.placeholders.backup";
     private static final String DEBUG_PERMISSION = "onemb.placeholders.debug";
     private static final int PAGE_SIZE = 8;
+    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacySection();
 
     private final OneMBPlaceholdersPlugin plugin;
 
@@ -243,15 +250,15 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.GOLD + "Placeholder: " + ChatColor.YELLOW + "%onemb_" + entry.key() + "%");
+        sendInteractivePlaceholderTitle(sender, "Placeholder", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
         sender.sendMessage(ChatColor.GRAY + "  Category: " + ChatColor.WHITE + entry.category() + describeEntryFlags(entry));
         sender.sendMessage(ChatColor.GRAY + "  Type: " + ChatColor.WHITE + entry.type().name().toLowerCase(Locale.ROOT));
         if (!entry.description().isBlank()) {
             sender.sendMessage(ChatColor.GRAY + "  Description: " + ChatColor.WHITE + entry.description());
         }
-        sender.sendMessage(ChatColor.GRAY + "  Stored: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getStoredValueSummary(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Configured output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getConfiguredOutput(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Live output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getLiveOutput(entry.key())) + "'");
+        sendInteractiveValueLine(sender, "Stored", entry, safeDisplay(plugin.getStoredValueSummary(entry)));
+        sendInteractiveValueLine(sender, "Configured output", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
+        sendInteractiveValueLine(sender, "Live output", entry, safeDisplay(plugin.getLiveOutput(entry.key())));
         sender.sendMessage(
             ChatColor.GRAY
                 + "  Pending reload: "
@@ -271,12 +278,12 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.GOLD + "Preview: " + ChatColor.YELLOW + "%onemb_" + entry.key() + "%");
-        sender.sendMessage(ChatColor.GRAY + "  Stored: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getStoredValueSummary(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Configured output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getConfiguredOutput(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Formatted preview: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getFormattedPreview(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Plain preview: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getPlainPreview(entry)) + "'");
-        sender.sendMessage(ChatColor.GRAY + "  Live output: " + ChatColor.WHITE + "'" + safeDisplay(plugin.getLiveOutput(entry.key())) + "'");
+        sendInteractivePlaceholderTitle(sender, "Preview", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
+        sendInteractiveValueLine(sender, "Stored", entry, safeDisplay(plugin.getStoredValueSummary(entry)));
+        sendInteractiveValueLine(sender, "Configured output", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
+        sendInteractiveValueLine(sender, "Formatted preview", entry, safeDisplay(plugin.getFormattedPreview(entry)));
+        sendInteractiveValueLine(sender, "Plain preview", entry, safeDisplay(plugin.getPlainPreview(entry)));
+        sendInteractiveValueLine(sender, "Live output", entry, safeDisplay(plugin.getLiveOutput(entry.key())));
     }
 
     private void handleSearch(final CommandSender sender, final String[] args) {
@@ -518,6 +525,11 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
+        if (args.length == 2 && "permissions".equalsIgnoreCase(args[1])) {
+            sendDebugPermissions(sender);
+            return;
+        }
+
         if (args.length == 2 && "clear".equalsIgnoreCase(args[1])) {
             sendDebugClearHelp(sender);
             return;
@@ -528,7 +540,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|clear]");
+        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|permissions|clear]");
         sendDebugOverview(sender);
     }
 
@@ -556,6 +568,69 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + "  /_placeholders debug clear backups"
                 + ChatColor.WHITE
                 + " - Clear saved backup files and audit who cleared them."
+        );
+    }
+
+    private void sendDebugPermissions(final CommandSender sender) {
+        sender.sendMessage(
+            ChatColor.GOLD
+                + "1MB Placeholders permissions: "
+                + ChatColor.WHITE
+                + "(v"
+                + plugin.getPluginVersion()
+                + " build "
+                + plugin.getBuildNumber()
+                + ")"
+        );
+        sender.sendMessage(ChatColor.GRAY + "  Base permission:");
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.admin"
+                + ChatColor.WHITE
+                + " - Required before any /_placeholders command can be used."
+        );
+        sender.sendMessage(ChatColor.GRAY + "  Functional permissions:");
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.view"
+                + ChatColor.WHITE
+                + " - Allows list, get, and preview."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.search"
+                + ChatColor.WHITE
+                + " - Allows search."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.edit"
+                + ChatColor.WHITE
+                + " - Allows add, set, remove, and category toggle."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.reload"
+                + ChatColor.WHITE
+                + " - Allows reload."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.backup"
+                + ChatColor.WHITE
+                + " - Allows backup."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.debug"
+                + ChatColor.WHITE
+                + " - Allows debug, debug config, debug permissions, and debug clear."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "    onemb.placeholders.*"
+                + ChatColor.WHITE
+                + " - Grants all 1MB Placeholders permissions."
         );
     }
 
@@ -724,6 +799,12 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         );
         sender.sendMessage(
             ChatColor.YELLOW
+                + "  /_placeholders debug permissions"
+                + ChatColor.WHITE
+                + " - List the permission nodes used by this plugin."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
                 + "  /_placeholders debug clear logs"
                 + ChatColor.WHITE
                 + " - Clear log files while keeping the persistent purge-history.log record."
@@ -778,6 +859,14 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             ChatColor.YELLOW
                 + "  /"
                 + label
+                + " debug permissions"
+                + ChatColor.WHITE
+                + " - List the permission nodes used by this plugin."
+        );
+        sender.sendMessage(
+            ChatColor.YELLOW
+                + "  /"
+                + label
                 + " debug clear <logs|backups>"
                 + ChatColor.WHITE
                 + " - Clear logs or backups and keep an audit trail."
@@ -813,7 +902,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     ) {
         if (!listingSettings.showCategory()) {
             for (PlaceholderEntry entry : entries) {
-                sender.sendMessage(buildPlaceholderLine(entry, listingSettings, false));
+                sendPlaceholderEntryLine(sender, entry, listingSettings, false);
             }
             return;
         }
@@ -826,7 +915,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         for (Map.Entry<String, List<PlaceholderEntry>> categoryEntry : groupedEntries.entrySet()) {
             sender.sendMessage(buildCategoryHeader(categoryEntry.getKey(), categoryEntry.getValue(), listingSettings));
             for (PlaceholderEntry entry : categoryEntry.getValue()) {
-                sender.sendMessage(buildPlaceholderLine(entry, listingSettings, true));
+                sendPlaceholderEntryLine(sender, entry, listingSettings, true);
             }
         }
     }
@@ -895,6 +984,150 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
         line.append(ChatColor.GRAY).append(": ").append(ChatColor.WHITE).append("'").append(safeDisplay(plugin.getConfiguredOutput(entry))).append("'");
         return line.toString();
+    }
+
+    private void sendPlaceholderEntryLine(
+        final CommandSender sender,
+        final PlaceholderEntry entry,
+        final ListingSettings listingSettings,
+        final boolean categoryAlreadyShown
+    ) {
+        if (sender instanceof Player player) {
+            player.sendMessage(buildPlaceholderComponent(entry, listingSettings, categoryAlreadyShown));
+            return;
+        }
+
+        sender.sendMessage(buildPlaceholderLine(entry, listingSettings, categoryAlreadyShown));
+    }
+
+    private Component buildPlaceholderComponent(
+        final PlaceholderEntry entry,
+        final ListingSettings listingSettings,
+        final boolean categoryAlreadyShown
+    ) {
+        final String displayValue = safeDisplay(plugin.getConfiguredOutput(entry));
+        final TextComponent.Builder line = Component.text();
+        line.append(Component.text(categoryAlreadyShown ? "    " : "  ", NamedTextColor.YELLOW));
+
+        if (!categoryAlreadyShown && listingSettings.showCategory()) {
+            line.append(Component.text("[" + entry.category() + "] ", NamedTextColor.YELLOW));
+        }
+
+        if (listingSettings.showType()) {
+            line.append(Component.text("[" + entry.type().name().toLowerCase(Locale.ROOT) + "] ", NamedTextColor.GRAY));
+        }
+
+        line.append(buildInteractivePlaceholderComponent(entry, displayValue));
+
+        final String flags = describeEntryFlags(entry, categoryAlreadyShown);
+        if (!flags.isBlank()) {
+            line.append(Component.text(" [" + flags + "]", NamedTextColor.GRAY));
+        }
+
+        line.append(Component.text(": ", NamedTextColor.GRAY));
+        line.append(Component.text("'", NamedTextColor.WHITE));
+        line.append(buildInteractiveValueComponent(entry, displayValue, "Click to paste shown value into the chat box."));
+        line.append(Component.text("'", NamedTextColor.WHITE));
+        return line.build();
+    }
+
+    private void sendInteractivePlaceholderTitle(
+        final CommandSender sender,
+        final String label,
+        final PlaceholderEntry entry,
+        final String displayValue
+    ) {
+        if (sender instanceof Player player) {
+            player.sendMessage(
+                Component.text(label + ": ", NamedTextColor.GOLD)
+                    .append(buildInteractivePlaceholderComponent(entry, displayValue))
+            );
+            return;
+        }
+
+        sender.sendMessage(ChatColor.GOLD + label + ": " + ChatColor.YELLOW + buildPlaceholderToken(entry));
+    }
+
+    private void sendInteractiveValueLine(
+        final CommandSender sender,
+        final String label,
+        final PlaceholderEntry entry,
+        final String value
+    ) {
+        if (sender instanceof Player player) {
+            player.sendMessage(
+                Component.text("  " + label + ": ", NamedTextColor.GRAY)
+                    .append(Component.text("'", NamedTextColor.WHITE))
+                    .append(buildInteractiveValueComponent(entry, value, "Click to paste this value into the chat box."))
+                    .append(Component.text("'", NamedTextColor.WHITE))
+            );
+            return;
+        }
+
+        sender.sendMessage(ChatColor.GRAY + "  " + label + ": " + ChatColor.WHITE + "'" + value + "'");
+    }
+
+    private Component buildInteractivePlaceholderComponent(final PlaceholderEntry entry, final String displayValue) {
+        final String placeholderToken = buildPlaceholderToken(entry);
+        return Component.text(placeholderToken, NamedTextColor.YELLOW)
+            .clickEvent(ClickEvent.suggestCommand(placeholderToken))
+            .hoverEvent(
+                HoverEvent.showText(
+                    Component.text()
+                        .append(Component.text(placeholderToken, NamedTextColor.YELLOW))
+                        .append(Component.newline())
+                        .append(Component.text("Value: ", NamedTextColor.GRAY))
+                        .append(Component.text("'" + abbreviateForHover(displayValue) + "'", NamedTextColor.WHITE))
+                        .append(Component.newline())
+                        .append(Component.text("Click to paste placeholder into the chat box.", NamedTextColor.GOLD))
+                        .build()
+                )
+            );
+    }
+
+    private Component buildInteractiveValueComponent(
+        final PlaceholderEntry entry,
+        final String value,
+        final String instruction
+    ) {
+        final Component base = "<not active>".equals(value)
+            ? Component.text(value, NamedTextColor.WHITE)
+            : LEGACY_SERIALIZER.deserialize(value);
+        final TextComponent.Builder hoverText = Component.text()
+            .append(Component.text("Value: ", NamedTextColor.GRAY))
+            .append(Component.text("'" + abbreviateForHover(value) + "'", NamedTextColor.WHITE))
+            .append(Component.newline())
+            .append(Component.text(buildPlaceholderToken(entry), NamedTextColor.YELLOW));
+
+        if ("<not active>".equals(value)) {
+            return base.hoverEvent(
+                HoverEvent.showText(
+                    hoverText
+                        .append(Component.newline())
+                        .append(Component.text("This placeholder is not currently active.", NamedTextColor.GOLD))
+                        .build()
+                )
+            );
+        }
+
+        return base.clickEvent(ClickEvent.suggestCommand(value))
+            .hoverEvent(
+                HoverEvent.showText(
+                    hoverText
+                        .append(Component.newline())
+                        .append(Component.text(instruction, NamedTextColor.GOLD))
+                        .build()
+                )
+            );
+    }
+
+    private String buildPlaceholderToken(final PlaceholderEntry entry) {
+        return "%onemb_" + entry.key() + "%";
+    }
+
+    private String abbreviateForHover(final String value) {
+        final String plainValue = ChatColor.stripColor(value) == null ? value : ChatColor.stripColor(value);
+        return plainValue.length() <= 180 ? plainValue : plainValue.substring(0, 177) + "...";
     }
 
     private String describeEntryFlags(final PlaceholderEntry entry, final boolean categoryAlreadyShown) {
@@ -1009,7 +1242,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private List<String> completeDebugArguments(final String[] args) {
         if (args.length == 2) {
-            return matchToken(args[1], List.of("config", "clear"));
+            return matchToken(args[1], List.of("config", "permissions", "clear"));
         }
 
         if (args.length == 3 && "clear".equalsIgnoreCase(args[1])) {
