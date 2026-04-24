@@ -72,8 +72,10 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
                 + buildMetadata.pluginVersion()
                 + " build "
                 + buildMetadata.buildNumber()
-                + " enabled for Minecraft "
-                + buildMetadata.minecraftVersion()
+                + " compiled against Paper API "
+                + buildMetadata.paperApiVersion()
+                + ", declaring api-version "
+                + buildMetadata.apiVersion()
                 + " using Java "
                 + buildMetadata.targetJava()
                 + "."
@@ -115,6 +117,14 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
     public String getMinecraftVersion() {
         return buildMetadata.minecraftVersion();
+    }
+
+    public String getPaperApiVersion() {
+        return buildMetadata.paperApiVersion();
+    }
+
+    public String getDeclaredApiVersion() {
+        return buildMetadata.apiVersion();
     }
 
     public String getTargetJavaVersion() {
@@ -1049,7 +1059,7 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
             case "plugin_version" -> getPluginVersion();
             case "plugin_build" -> getBuildNumber();
             case "plugin_version_build" -> "v" + getPluginVersion() + " build " + getBuildNumber();
-            case "minecraft_version" -> getMinecraftVersion();
+            case "minecraft_version" -> Objects.toString(getServer().getMinecraftVersion(), getMinecraftVersion());
             case "java_version" -> System.getProperty("java.version", buildMetadata.targetJava());
             case "java_runtime_version" -> System.getProperty("java.runtime.version", System.getProperty("java.version", ""));
             case "paper_version" -> Objects.toString(getServer().getMinecraftVersion(), getMinecraftVersion());

@@ -77,6 +77,16 @@ tasks.jar {
     }
 }
 
+tasks.register('copyReleaseJar', Copy) {
+    dependsOn tasks.jar
+    from(tasks.named('jar'))
+    into(layout.projectDirectory.dir('libs'))
+}
+
+tasks.build {
+    dependsOn(tasks.named('copyReleaseJar'))
+}
+
 tasks.register('printBuildConfig') {
     group = 'help'
     description = 'Prints the current build configuration.'
@@ -84,11 +94,12 @@ tasks.register('printBuildConfig') {
     doLast {
         println "Plugin version : ${pluginVersion}"
         println "Build number   : ${buildNumber}"
-        println "Minecraft      : ${minecraftVersion}"
         println "Paper API      : ${paperApiVersion}"
+        println "API floor      : ${apiVersion}"
+        println "Jar floor tag  : ${minecraftVersion}"
         println "PlaceholderAPI : ${placeholderApiVersion}"
         println "Java target    : ${targetJava}"
-        println "API version    : ${apiVersion}"
         println "Jar name       : ${jarFileName}"
+        println "Release jar    : libs/${jarFileName}"
     }
 }

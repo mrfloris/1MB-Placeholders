@@ -4,7 +4,8 @@ Little plugin for 1MoreBlock.com that adds global PlaceholderAPI values we can r
 
 ## Dependencies
 
-- Paper `1.21.11` API
+- Paper API `26.1.2` at compile time
+- Declared `api-version: 1.21.11` in `plugin.yml` so the same jar can load on both Paper `1.21.11` and Paper `26.1.2`
 - PlaceholderAPI plugin
 - LuckPerms, if you want to assign the `onemb.placeholders.*` or individual `onemb.placeholders.*` permissions for the `/_placeholders` admin commands
 - Tested against `PlaceholderAPI-2.12.3-DEV-265.jar`
@@ -26,8 +27,10 @@ java -version
 This produces:
 
 ```text
-build/libs/1MB-Placeholders-v1.3.0-536-j25-1.21.11.jar
+libs/1MB-Placeholders-v1.3.0-538-j25-1.21.11.jar
 ```
+
+The Gradle build now copies the release jar into the repo-root `libs/` folder so older tested jars stay preserved between builds.
 
 ### Rollback build for Java 21 and Paper 1.19.1
 
@@ -49,8 +52,18 @@ java -version
 That produces:
 
 ```text
-build/libs/1MB-Placeholders-v1.0.0-j21-1.19.1.jar
+libs/1MB-Placeholders-v1.0.0-j21-1.19.1.jar
 ```
+
+## Local Testing
+
+Use the centralized Paper runner here:
+
+```text
+/Users/floris/Projects/Codex/servers/run-test-server
+```
+
+Do not create or rely on a repo-local `servers/` folder in this project.
 
 ## Installation
 
@@ -184,7 +197,7 @@ This is made for the 1MoreBlock.com Minecraft server, you're free to use this fo
 ## Credits
 
 Code created, and .jar made by PyroTempus. (v 1.0.0 build 519 for 1.19.x)
-Code updated by mrfloris and OpenAI. (v 1.3.0 build 536 for 1.21.11)
+Code updated by mrfloris and OpenAI. (v 1.3.0 build 538 for 1.21.11)
 
 ## Placeholders
 

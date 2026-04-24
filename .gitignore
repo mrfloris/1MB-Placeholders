@@ -1,4 +1,6 @@
 /bin/
 /.gradle/
 /build/
+/libs/
+/servers/
 .DS_Store

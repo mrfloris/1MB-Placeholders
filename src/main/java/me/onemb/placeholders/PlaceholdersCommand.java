@@ -674,7 +674,19 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + ChatColor.WHITE
                 + "Java "
                 + plugin.getTargetJavaVersion()
-                + " / Minecraft "
+                + " / Paper API "
+                + plugin.getPaperApiVersion()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Declared api-version: "
+                + ChatColor.WHITE
+                + plugin.getDeclaredApiVersion()
+        );
+        sender.sendMessage(
+            ChatColor.GRAY
+                + "  Jar compatibility floor: "
+                + ChatColor.WHITE
                 + plugin.getMinecraftVersion()
         );
         sender.sendMessage(

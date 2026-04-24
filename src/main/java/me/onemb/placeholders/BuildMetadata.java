@@ -10,17 +10,23 @@ final class BuildMetadata {
     private final String buildNumber;
     private final String targetJava;
     private final String minecraftVersion;
+    private final String paperApiVersion;
+    private final String apiVersion;
 
     private BuildMetadata(
         final String pluginVersion,
         final String buildNumber,
         final String targetJava,
-        final String minecraftVersion
+        final String minecraftVersion,
+        final String paperApiVersion,
+        final String apiVersion
     ) {
         this.pluginVersion = pluginVersion;
         this.buildNumber = buildNumber;
         this.targetJava = targetJava;
         this.minecraftVersion = minecraftVersion;
+        this.paperApiVersion = paperApiVersion;
+        this.apiVersion = apiVersion;
     }
 
     static BuildMetadata load() {
@@ -38,7 +44,9 @@ final class BuildMetadata {
             properties.getProperty("pluginVersion", "unknown"),
             properties.getProperty("buildNumber", "unknown"),
             properties.getProperty("targetJava", "unknown"),
-            properties.getProperty("minecraftVersion", "unknown")
+            properties.getProperty("minecraftVersion", "unknown"),
+            properties.getProperty("paperApiVersion", "unknown"),
+            properties.getProperty("apiVersion", "unknown")
         );
     }
 
@@ -56,5 +64,13 @@ final class BuildMetadata {
 
     String minecraftVersion() {
         return minecraftVersion;
+    }
+
+    String paperApiVersion() {
+        return paperApiVersion;
+    }
+
+    String apiVersion() {
+        return apiVersion;
     }
 }
