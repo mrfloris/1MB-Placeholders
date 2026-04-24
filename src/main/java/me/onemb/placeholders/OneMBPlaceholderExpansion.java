@@ -15,7 +15,7 @@ public final class OneMBPlaceholderExpansion extends PlaceholderExpansion {
 
     @Override
     public @NotNull String getAuthor() {
-        return String.join(", ", plugin.getDescription().getAuthors());
+        return String.join(", ", plugin.getPluginAuthors());
     }
 
     @Override
@@ -25,7 +25,7 @@ public final class OneMBPlaceholderExpansion extends PlaceholderExpansion {
 
     @Override
     public @NotNull String getVersion() {
-        return plugin.getDescription().getVersion();
+        return plugin.getPluginMetaSafe().getVersion();
     }
 
     @Override

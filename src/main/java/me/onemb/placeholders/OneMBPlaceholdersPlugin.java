@@ -23,13 +23,13 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import io.papermc.paper.plugin.configuration.PluginMeta;
 
 public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
@@ -109,6 +109,22 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
 
     public String getPluginVersion() {
         return buildMetadata.pluginVersion();
+    }
+
+    public PluginMeta getPluginMetaSafe() {
+        return getPluginMeta();
+    }
+
+    public String getPluginDisplayName() {
+        return getPluginMetaSafe().getName();
+    }
+
+    public List<String> getPluginAuthors() {
+        return List.copyOf(getPluginMetaSafe().getAuthors());
+    }
+
+    public String getPluginDescriptionText() {
+        return Objects.toString(getPluginMetaSafe().getDescription(), "");
     }
 
     public String getBuildNumber() {
@@ -1147,11 +1163,11 @@ public final class OneMBPlaceholdersPlugin extends JavaPlugin {
         }
 
         if (convertLegacyAmpersandCodes) {
-            output = ChatColor.translateAlternateColorCodes('&', output);
+            output = legacySerializer.serialize(LegacyComponentSerializer.legacyAmpersand().deserialize(output));
         }
 
         if (stripFormatting) {
-            output = ChatColor.stripColor(output);
+            output = plainSerializer.serialize(legacySerializer.deserialize(output));
         }
 
         return output;

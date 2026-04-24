@@ -12,8 +12,9 @@ import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -32,7 +33,9 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     private static final String BACKUP_PERMISSION = "onemb.placeholders.backup";
     private static final String DEBUG_PERMISSION = "onemb.placeholders.debug";
     private static final int PAGE_SIZE = 8;
+    private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacySection();
+    private static final PlainTextComponentSerializer PLAIN_TEXT_SERIALIZER = PlainTextComponentSerializer.plainText();
 
     private final OneMBPlaceholdersPlugin plugin;
 
@@ -48,7 +51,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final @NotNull String[] args
     ) {
         if (!sender.hasPermission(ADMIN_PERMISSION)) {
-            sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+            sendError(sender, "You do not have permission to use this command.");
             return true;
         }
 
@@ -140,7 +143,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 handleDebug(sender, args);
             }
             default -> {
-                sender.sendMessage(ChatColor.RED + "Unknown subcommand. Use /" + label + " help.");
+                sendError(sender, "Unknown subcommand. Use /" + label + " help.");
                 sendHelp(sender, label);
             }
         }
@@ -196,7 +199,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return true;
         }
 
-        sender.sendMessage(ChatColor.RED + "You do not have permission: " + permission);
+        sendError(sender, "You do not have permission: " + permission);
         return false;
     }
 
@@ -210,6 +213,32 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         if (sender.hasPermission(permission) && completion.startsWith(currentInput)) {
             completions.add(completion);
         }
+    }
+
+    private void sendMiniMessage(final CommandSender sender, final String miniMessage) {
+        sender.sendMessage(MINI_MESSAGE.deserialize(miniMessage));
+    }
+
+    private void sendError(final CommandSender sender, final String message) {
+        sendMiniMessage(sender, "<red>" + MINI_MESSAGE.escapeTags(message) + "</red>");
+    }
+
+    private void sendSuccess(final CommandSender sender, final String message) {
+        sendMiniMessage(sender, "<green>" + MINI_MESSAGE.escapeTags(message) + "</green>");
+    }
+
+    private void sendMutedLabelValue(final CommandSender sender, final String label, final String value) {
+        sender.sendMessage(
+            Component.text("  " + label + ": ", NamedTextColor.GRAY)
+                .append(Component.text(value, NamedTextColor.WHITE))
+        );
+    }
+
+    private void sendCommandHelpLine(final CommandSender sender, final String commandText, final String description) {
+        sender.sendMessage(
+            Component.text("  " + commandText, NamedTextColor.YELLOW)
+                .append(Component.text(" - " + description, NamedTextColor.WHITE))
+        );
     }
 
     private void handleList(final CommandSender sender, final String[] args) {
@@ -229,7 +258,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
             final String normalizedCategory = plugin.normalizeCategory(args[index]);
             if (!plugin.hasCategory(normalizedCategory)) {
-                sender.sendMessage(ChatColor.RED + "Unknown category: " + args[index]);
+                sendError(sender, "Unknown category: " + args[index]);
                 return;
             }
 
@@ -251,20 +280,15 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         }
 
         sendInteractivePlaceholderTitle(sender, "Placeholder", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
-        sender.sendMessage(ChatColor.GRAY + "  Category: " + ChatColor.WHITE + entry.category() + describeEntryFlags(entry));
-        sender.sendMessage(ChatColor.GRAY + "  Type: " + ChatColor.WHITE + entry.type().name().toLowerCase(Locale.ROOT));
+        sendMutedLabelValue(sender, "Category", entry.category() + describeEntryFlags(entry));
+        sendMutedLabelValue(sender, "Type", entry.type().name().toLowerCase(Locale.ROOT));
         if (!entry.description().isBlank()) {
-            sender.sendMessage(ChatColor.GRAY + "  Description: " + ChatColor.WHITE + entry.description());
+            sendMutedLabelValue(sender, "Description", entry.description());
         }
         sendInteractiveValueLine(sender, "Stored", entry, safeDisplay(plugin.getStoredValueSummary(entry)));
         sendInteractiveValueLine(sender, "Configured output", entry, safeDisplay(plugin.getConfiguredOutput(entry)));
         sendInteractiveValueLine(sender, "Live output", entry, safeDisplay(plugin.getLiveOutput(entry.key())));
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Pending reload: "
-                + ChatColor.WHITE
-                + (plugin.hasPendingReloadChange(entry.key()) ? "yes" : "no")
-        );
+        sendMutedLabelValue(sender, "Pending reload", plugin.hasPendingReloadChange(entry.key()) ? "yes" : "no");
     }
 
     private void handlePreview(final CommandSender sender, final String[] args) {
@@ -288,7 +312,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private void handleSearch(final CommandSender sender, final String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders search <text> [category] [page]");
+            sendError(sender, "Usage: /_placeholders search <text> [category] [page]");
             return;
         }
 
@@ -308,12 +332,12 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
         final String query = String.join(" ", slice(args, 1, endIndexExclusive)).trim();
         if (query.isBlank()) {
-            sender.sendMessage(ChatColor.RED + "Search text could not be empty.");
+            sendError(sender, "Search text could not be empty.");
             return;
         }
 
         if (!plugin.isSearchLengthValid(query)) {
-            sender.sendMessage(ChatColor.RED + "Search text may be at most 128 characters.");
+            sendError(sender, "Search text may be at most 128 characters.");
             return;
         }
 
@@ -322,7 +346,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
     private void handleAdd(final CommandSender sender, final String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders add [category:]<key> <value...> or /_placeholders add <category> <key> <value...>");
+            sendError(sender, "Usage: /_placeholders add [category:]<key> <value...> or /_placeholders add <category> <key> <value...>");
             return;
         }
 
@@ -341,12 +365,16 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final String key = categoryAndKey[1];
         final ActionResult result = plugin.addPlaceholderToConfig(category, key, value, getActorName(sender));
 
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void handleSet(final CommandSender sender, final String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders set <key> <value...> or /_placeholders set <category> <key> <value...>");
+            sendError(sender, "Usage: /_placeholders set <key> <value...> or /_placeholders set <category> <key> <value...>");
             return;
         }
 
@@ -370,35 +398,43 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
         final ActionResult result = plugin.setPlaceholderInConfig(keyReference, value, getActorName(sender));
 
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void handleCategory(final CommandSender sender, final String[] args) {
         if (args.length != 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders category <category> <true|false>");
+            sendError(sender, "Usage: /_placeholders category <category> <true|false>");
             return;
         }
 
         final String category = plugin.normalizeCategory(args[1]);
         if (!plugin.hasCategory(category)) {
-            sender.sendMessage(ChatColor.RED + "Unknown category: " + args[1]);
+            sendError(sender, "Unknown category: " + args[1]);
             return;
         }
 
         final @Nullable Boolean enabled = parseBooleanArgument(args[2]);
         if (enabled == null) {
-            sender.sendMessage(ChatColor.RED + "Category state must be true or false.");
-            sender.sendMessage(ChatColor.YELLOW + "Usage: /_placeholders category <category> <true|false>");
+            sendError(sender, "Category state must be true or false.");
+            sendMiniMessage(sender, "<yellow>Usage: /_placeholders category &lt;category&gt; &lt;true|false&gt;</yellow>");
             return;
         }
 
         final ActionResult result = plugin.setCategoryEnabled(category, enabled, getActorName(sender));
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void handleRemove(final CommandSender sender, final String[] args) {
         if (args.length != 2 && !(args.length == 3 && plugin.hasCategory(args[1]))) {
-            sender.sendMessage(ChatColor.RED + "Usage: /_placeholders remove <key> or /_placeholders remove <category> <key>");
+            sendError(sender, "Usage: /_placeholders remove <key> or /_placeholders remove <category> <key>");
             return;
         }
 
@@ -410,7 +446,11 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         }
 
         final ActionResult result = plugin.removePlaceholderFromConfig(keyReference, getActorName(sender));
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void sendPlaceholderList(
@@ -429,20 +469,23 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             .toList();
 
         sender.sendMessage(
-            ChatColor.GOLD
-                + "1MB Placeholders: "
-                + ChatColor.WHITE
-                + "(v"
-                + plugin.getPluginVersion()
-                + " build "
-                + plugin.getBuildNumber()
-                + " for "
-                + plugin.getMinecraftVersion()
-                + ")"
+            Component.text("1MB Placeholders: ", NamedTextColor.GOLD)
+                .append(
+                    Component.text(
+                        "(v"
+                            + plugin.getPluginVersion()
+                            + " build "
+                            + plugin.getBuildNumber()
+                            + " for "
+                            + plugin.getMinecraftVersion()
+                            + ")",
+                        NamedTextColor.WHITE
+                    )
+                )
         );
 
         if (matches.isEmpty()) {
-            sender.sendMessage(ChatColor.GRAY + "  No placeholders matched that request.");
+            sendMiniMessage(sender, "<gray>  No placeholders matched that request.</gray>");
             return;
         }
 
@@ -451,7 +494,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             final int totalPages = Math.max(1, (int) Math.ceil(matches.size() / (double) PAGE_SIZE));
             final int page = requestedPage <= 0 ? 1 : requestedPage;
             if (page < 1 || page > totalPages) {
-                sender.sendMessage(ChatColor.RED + "Page must be between 1 and " + totalPages + ".");
+                sendError(sender, "Page must be between 1 and " + totalPages + ".");
                 return;
             }
 
@@ -459,16 +502,14 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             final int endIndex = Math.min(startIndex + PAGE_SIZE, matches.size());
             visibleEntries = matches.subList(startIndex, endIndex);
 
-            sender.sendMessage(
-                ChatColor.GRAY
-                    + "  Showing "
-                    + ChatColor.WHITE
-                    + (startIndex + 1)
+            sendMutedLabelValue(
+                sender,
+                "Showing",
+                (startIndex + 1)
                     + "-"
                     + endIndex
                     + "/"
                     + matches.size()
-                    + ChatColor.GRAY
                     + " (page "
                     + page
                     + "/"
@@ -479,24 +520,19 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             );
         } else {
             visibleEntries = matches;
-            sender.sendMessage(
-                ChatColor.GRAY
-                    + "  Showing "
-                    + ChatColor.WHITE
-                    + visibleEntries.size()
-                    + "/"
-                    + matches.size()
-                    + ChatColor.GRAY
-                    + " (console output, pagination disabled)"
+            sendMutedLabelValue(
+                sender,
+                "Showing",
+                visibleEntries.size() + "/" + matches.size() + " (console output, pagination disabled)"
             );
         }
 
         if (category != null) {
-            sender.sendMessage(ChatColor.GRAY + "  Category filter: " + ChatColor.WHITE + category);
+            sendMutedLabelValue(sender, "Category filter", category);
         }
 
         if (searchQuery != null) {
-            sender.sendMessage(ChatColor.GRAY + "  Search filter: " + ChatColor.WHITE + searchQuery);
+            sendMutedLabelValue(sender, "Search filter", searchQuery);
         }
 
         sendFormattedPlaceholderEntries(sender, visibleEntries, listingSettings);
@@ -505,12 +541,16 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     private void reloadPlaceholders(final CommandSender sender) {
         plugin.reloadPlaceholders();
         plugin.audit(getActorName(sender), "RELOAD", "Reloaded placeholders from config.yml.");
-        sender.sendMessage(ChatColor.GREEN + "Reloaded placeholders from config.yml.");
+        sendSuccess(sender, "Reloaded placeholders from config.yml.");
     }
 
     private void backupConfig(final CommandSender sender) {
         final ActionResult result = plugin.createBackup(getActorName(sender));
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void handleDebug(final CommandSender sender, final String[] args) {
@@ -521,7 +561,11 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
 
         if (args.length == 2 && "config".equalsIgnoreCase(args[1])) {
             final ActionResult result = plugin.mergeMissingDefaultConfig(getActorName(sender));
-            sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+            if (result.success()) {
+                sendSuccess(sender, result.message());
+            } else {
+                sendError(sender, result.message());
+            }
             return;
         }
 
@@ -540,7 +584,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /_placeholders debug [config|permissions|clear]");
+        sendError(sender, "Usage: /_placeholders debug [config|permissions|clear]");
         sendDebugOverview(sender);
     }
 
@@ -552,86 +596,47 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             default -> ActionResult.failure("Usage: /_placeholders debug clear <logs|backups>");
         };
 
-        sender.sendMessage(result.success() ? ChatColor.GREEN + result.message() : ChatColor.RED + result.message());
+        if (result.success()) {
+            sendSuccess(sender, result.message());
+        } else {
+            sendError(sender, result.message());
+        }
     }
 
     private void sendDebugClearHelp(final CommandSender sender) {
-        sender.sendMessage(ChatColor.GOLD + "1MB Placeholders debug clear:");
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug clear logs"
-                + ChatColor.WHITE
-                + " - Clear log files while keeping the persistent purge-history.log record."
+        sender.sendMessage(Component.text("1MB Placeholders debug clear:", NamedTextColor.GOLD));
+        sendCommandHelpLine(
+            sender,
+            "/_placeholders debug clear logs",
+            "Clear log files while keeping the persistent purge-history.log record."
         );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug clear backups"
-                + ChatColor.WHITE
-                + " - Clear saved backup files and audit who cleared them."
+        sendCommandHelpLine(
+            sender,
+            "/_placeholders debug clear backups",
+            "Clear saved backup files and audit who cleared them."
         );
     }
 
     private void sendDebugPermissions(final CommandSender sender) {
         sender.sendMessage(
-            ChatColor.GOLD
-                + "1MB Placeholders permissions: "
-                + ChatColor.WHITE
-                + "(v"
-                + plugin.getPluginVersion()
-                + " build "
-                + plugin.getBuildNumber()
-                + ")"
+            Component.text("1MB Placeholders permissions: ", NamedTextColor.GOLD)
+                .append(
+                    Component.text(
+                        "(v" + plugin.getPluginVersion() + " build " + plugin.getBuildNumber() + ")",
+                        NamedTextColor.WHITE
+                    )
+                )
         );
-        sender.sendMessage(ChatColor.GRAY + "  Base permission:");
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.admin"
-                + ChatColor.WHITE
-                + " - Required before any /_placeholders command can be used."
-        );
-        sender.sendMessage(ChatColor.GRAY + "  Functional permissions:");
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.view"
-                + ChatColor.WHITE
-                + " - Allows list, get, and preview."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.search"
-                + ChatColor.WHITE
-                + " - Allows search."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.edit"
-                + ChatColor.WHITE
-                + " - Allows add, set, remove, and category toggle."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.reload"
-                + ChatColor.WHITE
-                + " - Allows reload."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.backup"
-                + ChatColor.WHITE
-                + " - Allows backup."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.debug"
-                + ChatColor.WHITE
-                + " - Allows debug, debug config, debug permissions, and debug clear."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "    onemb.placeholders.*"
-                + ChatColor.WHITE
-                + " - Grants all 1MB Placeholders permissions."
-        );
+        sendMiniMessage(sender, "<gray>  Base permission:</gray>");
+        sendCommandHelpLine(sender, "  onemb.placeholders.admin", "Required before any /_placeholders command can be used.");
+        sendMiniMessage(sender, "<gray>  Functional permissions:</gray>");
+        sendCommandHelpLine(sender, "  onemb.placeholders.view", "Allows list, get, and preview.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.search", "Allows search.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.edit", "Allows add, set, remove, and category toggle.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.reload", "Allows reload.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.backup", "Allows backup.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.debug", "Allows debug, debug config, debug permissions, and debug clear.");
+        sendCommandHelpLine(sender, "  onemb.placeholders.*", "Grants all 1MB Placeholders permissions.");
     }
 
     private void sendDebugOverview(final CommandSender sender) {
@@ -642,78 +647,24 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final List<String> validationIssues = plugin.getValidationIssues();
 
         sender.sendMessage(
-            ChatColor.GOLD
-                + "1MB Placeholders debug: "
-                + ChatColor.WHITE
-                + "(v"
-                + plugin.getPluginVersion()
-                + " build "
-                + plugin.getBuildNumber()
-                + ")"
+            Component.text("1MB Placeholders debug: ", NamedTextColor.GOLD)
+                .append(Component.text("(v" + plugin.getPluginVersion() + " build " + plugin.getBuildNumber() + ")", NamedTextColor.WHITE))
         );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Plugin: "
-                + ChatColor.WHITE
-                + plugin.getDescription().getName()
-                + " v"
-                + plugin.getPluginVersion()
-                + " build "
-                + plugin.getBuildNumber()
-        );
-        sender.sendMessage(ChatColor.GRAY + "  Credits: " + ChatColor.WHITE + "PyroTempus, mrfloris, and OpenAI");
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Authors metadata: "
-                + ChatColor.WHITE
-                + String.join(", ", plugin.getDescription().getAuthors())
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Built for: "
-                + ChatColor.WHITE
-                + "Java "
-                + plugin.getTargetJavaVersion()
-                + " / Paper API "
-                + plugin.getPaperApiVersion()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Declared api-version: "
-                + ChatColor.WHITE
-                + plugin.getDeclaredApiVersion()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Jar compatibility floor: "
-                + ChatColor.WHITE
-                + plugin.getMinecraftVersion()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Runtime Java: "
-                + ChatColor.WHITE
-                + System.getProperty("java.version", "unknown")
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Server engine: "
-                + ChatColor.WHITE
-                + plugin.getServer().getVersion()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Runtime Minecraft: "
-                + ChatColor.WHITE
-                + plugin.getServer().getMinecraftVersion()
-        );
-        sender.sendMessage(ChatColor.GRAY + "  Data folder: " + ChatColor.WHITE + plugin.getDataFolderPath());
-        sender.sendMessage(ChatColor.GRAY + "  Config path: " + ChatColor.WHITE + plugin.getConfigFilePath());
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Config file: "
-                + ChatColor.WHITE
-                + plugin.getConfiguredCategoryCount()
+        sendMutedLabelValue(sender, "Plugin", plugin.getPluginDisplayName() + " v" + plugin.getPluginVersion() + " build " + plugin.getBuildNumber());
+        sendMutedLabelValue(sender, "Credits", "PyroTempus, mrfloris, and OpenAI");
+        sendMutedLabelValue(sender, "Authors metadata", String.join(", ", plugin.getPluginAuthors()));
+        sendMutedLabelValue(sender, "Built for", "Java " + plugin.getTargetJavaVersion() + " / Paper API " + plugin.getPaperApiVersion());
+        sendMutedLabelValue(sender, "Declared api-version", plugin.getDeclaredApiVersion());
+        sendMutedLabelValue(sender, "Jar compatibility floor", plugin.getMinecraftVersion());
+        sendMutedLabelValue(sender, "Runtime Java", System.getProperty("java.version", "unknown"));
+        sendMutedLabelValue(sender, "Server engine", plugin.getServer().getVersion());
+        sendMutedLabelValue(sender, "Runtime Minecraft", plugin.getServer().getMinecraftVersion());
+        sendMutedLabelValue(sender, "Data folder", plugin.getDataFolderPath().toString());
+        sendMutedLabelValue(sender, "Config path", plugin.getConfigFilePath().toString());
+        sendMutedLabelValue(
+            sender,
+            "Config file",
+            plugin.getConfiguredCategoryCount()
                 + " categories, "
                 + plugin.getEnabledCategoryCount()
                 + " enabled, "
@@ -723,57 +674,37 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + " placeholders total"
         );
         sender.sendMessage(
-            ChatColor.GRAY
-                + "  Current config status: "
-                + (currentConfigStatus.success() ? ChatColor.GREEN : ChatColor.RED)
-                + currentConfigStatus.message()
+            Component.text("  Current config status: ", NamedTextColor.GRAY)
+                .append(Component.text(currentConfigStatus.message(), currentConfigStatus.success() ? NamedTextColor.GREEN : NamedTextColor.RED))
         );
+        sendMutedLabelValue(sender, "Active placeholders", String.valueOf(plugin.getLivePlaceholderCount()));
         sender.sendMessage(
-            ChatColor.GRAY
-                + "  Active placeholders: "
-                + ChatColor.WHITE
-                + plugin.getLivePlaceholderCount()
+            Component.text("  Bundled defaults: ", NamedTextColor.GRAY)
+                .append(Component.text(bundledConfigStatus.message(), bundledConfigStatus.success() ? NamedTextColor.GREEN : NamedTextColor.RED))
         );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Bundled defaults: "
-                + (bundledConfigStatus.success() ? ChatColor.GREEN : ChatColor.RED)
-                + bundledConfigStatus.message()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Backups: "
-                + ChatColor.WHITE
-                + plugin.countBackupFiles()
-                + " file(s) in "
-                + plugin.getBackupsDirectoryPath()
-        );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Logs: "
-                + ChatColor.WHITE
-                + plugin.countClearableLogFiles()
+        sendMutedLabelValue(sender, "Backups", plugin.countBackupFiles() + " file(s) in " + plugin.getBackupsDirectoryPath());
+        sendMutedLabelValue(
+            sender,
+            "Logs",
+            plugin.countClearableLogFiles()
                 + " clearable file(s) in "
                 + plugin.getLogsDirectoryPath()
-                + ChatColor.GRAY
                 + (plugin.hasPurgeHistoryLog() ? " + purge-history.log" : "")
         );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Formatting: "
-                + ChatColor.WHITE
-                + "MiniMessage="
+        sendMutedLabelValue(
+            sender,
+            "Formatting",
+            "MiniMessage="
                 + onOff(formattingSettings.parseMiniMessage())
                 + ", legacy=&="
                 + onOff(formattingSettings.convertLegacyAmpersandCodes())
                 + ", strip="
                 + onOff(formattingSettings.stripFormatting())
         );
-        sender.sendMessage(
-            ChatColor.GRAY
-                + "  Listing: "
-                + ChatColor.WHITE
-                + "category="
+        sendMutedLabelValue(
+            sender,
+            "Listing",
+            "category="
                 + onOff(listingSettings.showCategory())
                 + ", enabled-only="
                 + onOff(listingSettings.onlyShowEnabledPlaceholders())
@@ -785,104 +716,57 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 + onOff(listingSettings.showCategoryCount())
         );
         sender.sendMessage(
-            ChatColor.GRAY
-                + "  Validation: "
-                + (validationIssues.isEmpty() ? ChatColor.GREEN : ChatColor.YELLOW)
-                + validationIssues.size()
-                + " issue(s)"
+            Component.text("  Validation: ", NamedTextColor.GRAY)
+                .append(Component.text(validationIssues.size() + " issue(s)", validationIssues.isEmpty() ? NamedTextColor.GREEN : NamedTextColor.YELLOW))
         );
         if (!validationIssues.isEmpty()) {
             final int limit = Math.min(5, validationIssues.size());
             for (int index = 0; index < limit; index++) {
-                sender.sendMessage(ChatColor.YELLOW + "    - " + validationIssues.get(index));
+                sendMiniMessage(sender, "<yellow>    - " + MINI_MESSAGE.escapeTags(validationIssues.get(index)) + "</yellow>");
             }
 
             if (validationIssues.size() > limit) {
-                sender.sendMessage(
-                    ChatColor.GRAY + "    ... and " + (validationIssues.size() - limit) + " more. Fix config issues and reload to re-check."
+                sendMiniMessage(
+                    sender,
+                    "<gray>    ... and "
+                        + (validationIssues.size() - limit)
+                        + " more. Fix config issues and reload to re-check.</gray>"
                 );
             }
         }
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug config"
-                + ChatColor.WHITE
-                + " - Add missing bundled default config nodes without overwriting existing values. Creates a backup first."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug permissions"
-                + ChatColor.WHITE
-                + " - List the permission nodes used by this plugin."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug clear logs"
-                + ChatColor.WHITE
-                + " - Clear log files while keeping the persistent purge-history.log record."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /_placeholders debug clear backups"
-                + ChatColor.WHITE
-                + " - Clear saved backup files and audit who cleared them."
-        );
+        sendCommandHelpLine(sender, "/_placeholders debug config", "Add missing bundled default config nodes without overwriting existing values. Creates a backup first.");
+        sendCommandHelpLine(sender, "/_placeholders debug permissions", "List the permission nodes used by this plugin.");
+        sendCommandHelpLine(sender, "/_placeholders debug clear logs", "Clear log files while keeping the persistent purge-history.log record.");
+        sendCommandHelpLine(sender, "/_placeholders debug clear backups", "Clear saved backup files and audit who cleared them.");
     }
 
     private void sendHelp(final CommandSender sender, final String label) {
         sender.sendMessage(
-            ChatColor.GOLD
-                + "1MB Placeholders commands: "
-                + ChatColor.WHITE
-                + "(v"
-                + plugin.getPluginVersion()
-                + " build "
-                + plugin.getBuildNumber()
-                + ")"
+            Component.text("1MB Placeholders commands: ", NamedTextColor.GOLD)
+                .append(Component.text("(v" + plugin.getPluginVersion() + " build " + plugin.getBuildNumber() + ")", NamedTextColor.WHITE))
         );
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + ChatColor.WHITE + " - List placeholders. Players get pages, console gets all results.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " <page>" + ChatColor.WHITE + " - Players can jump to another page of placeholders.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " list [category] [page]" + ChatColor.WHITE + " - List placeholders, optionally filtered by category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " get <key>" + ChatColor.WHITE + " - Show stored and live details for one placeholder.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " get <category> <key>" + ChatColor.WHITE + " - Same as get, with an explicit category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " preview <key>" + ChatColor.WHITE + " - Show raw, formatted, and plain previews.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " preview <category> <key>" + ChatColor.WHITE + " - Same as preview, with an explicit category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " search <text> [category] [page]" + ChatColor.WHITE + " - Search keys, descriptions, and values.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add [category:]<key> <value...>" + ChatColor.WHITE + " - Save a new static placeholder to config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " add <category> <key> <value...>" + ChatColor.WHITE + " - Same as add, using an explicit existing category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " category <category> <true|false>" + ChatColor.WHITE + " - Enable or disable a placeholder category in config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <key> <value...>" + ChatColor.WHITE + " - Update an existing static placeholder in config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " set <category> <key> <value...>" + ChatColor.WHITE + " - Same as set, with an explicit category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <key>" + ChatColor.WHITE + " - Remove a placeholder from config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " remove <category> <key>" + ChatColor.WHITE + " - Same as remove, with an explicit category.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " help" + ChatColor.WHITE + " - Show this help message.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " reload" + ChatColor.WHITE + " - Reload placeholders from config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " backup" + ChatColor.WHITE + " - Create a backup copy of config.yml.");
-        sender.sendMessage(ChatColor.YELLOW + "  /" + label + " debug" + ChatColor.WHITE + " - Show plugin diagnostics, settings, paths, and validation issues.");
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /"
-                + label
-                + " debug config"
-                + ChatColor.WHITE
-                + " - Add any missing bundled default config nodes without overwriting existing values."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /"
-                + label
-                + " debug permissions"
-                + ChatColor.WHITE
-                + " - List the permission nodes used by this plugin."
-        );
-        sender.sendMessage(
-            ChatColor.YELLOW
-                + "  /"
-                + label
-                + " debug clear <logs|backups>"
-                + ChatColor.WHITE
-                + " - Clear logs or backups and keep an audit trail."
-        );
+        sendCommandHelpLine(sender, "/" + label, "List placeholders. Players get pages, console gets all results.");
+        sendCommandHelpLine(sender, "/" + label + " <page>", "Players can jump to another page of placeholders.");
+        sendCommandHelpLine(sender, "/" + label + " list [category] [page]", "List placeholders, optionally filtered by category.");
+        sendCommandHelpLine(sender, "/" + label + " get <key>", "Show stored and live details for one placeholder.");
+        sendCommandHelpLine(sender, "/" + label + " get <category> <key>", "Same as get, with an explicit category.");
+        sendCommandHelpLine(sender, "/" + label + " preview <key>", "Show raw, formatted, and plain previews.");
+        sendCommandHelpLine(sender, "/" + label + " preview <category> <key>", "Same as preview, with an explicit category.");
+        sendCommandHelpLine(sender, "/" + label + " search <text> [category] [page]", "Search keys, descriptions, and values.");
+        sendCommandHelpLine(sender, "/" + label + " add [category:]<key> <value...>", "Save a new static placeholder to config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " add <category> <key> <value...>", "Same as add, using an explicit existing category.");
+        sendCommandHelpLine(sender, "/" + label + " category <category> <true|false>", "Enable or disable a placeholder category in config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " set <key> <value...>", "Update an existing static placeholder in config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " set <category> <key> <value...>", "Same as set, with an explicit category.");
+        sendCommandHelpLine(sender, "/" + label + " remove <key>", "Remove a placeholder from config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " remove <category> <key>", "Same as remove, with an explicit category.");
+        sendCommandHelpLine(sender, "/" + label + " help", "Show this help message.");
+        sendCommandHelpLine(sender, "/" + label + " reload", "Reload placeholders from config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " backup", "Create a backup copy of config.yml.");
+        sendCommandHelpLine(sender, "/" + label + " debug", "Show plugin diagnostics, settings, paths, and validation issues.");
+        sendCommandHelpLine(sender, "/" + label + " debug config", "Add any missing bundled default config nodes without overwriting existing values.");
+        sendCommandHelpLine(sender, "/" + label + " debug permissions", "List the permission nodes used by this plugin.");
+        sendCommandHelpLine(sender, "/" + label + " debug clear <logs|backups>", "Clear logs or backups and keep an audit trail.");
     }
 
     private boolean matchesQuery(final PlaceholderEntry entry, final String query) {
@@ -938,9 +822,8 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final ListingSettings listingSettings
     ) {
         final PlaceholderCategory category = plugin.getCategory(categoryName).orElse(null);
-        final StringBuilder line = new StringBuilder(
-            ChatColor.YELLOW + "  [" + categoryName + "]"
-        );
+        final TextComponent.Builder line = Component.text()
+            .append(Component.text("  [" + categoryName + "]", NamedTextColor.YELLOW));
 
         final List<String> metadata = new ArrayList<>();
         if (category != null && !listingSettings.onlyShowEnabledPlaceholders()) {
@@ -952,7 +835,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         }
 
         if (!metadata.isEmpty()) {
-            line.append(ChatColor.GRAY).append(" (").append(String.join(", ", metadata)).append(")");
+            line.append(Component.text(" (" + String.join(", ", metadata) + ")", NamedTextColor.GRAY));
         }
 
         if (
@@ -960,10 +843,11 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                 && category != null
                 && !category.description().isBlank()
         ) {
-            line.append(ChatColor.GRAY).append(" - ").append(ChatColor.WHITE).append(category.description());
+            line.append(Component.text(" - ", NamedTextColor.GRAY));
+            line.append(Component.text(category.description(), NamedTextColor.WHITE));
         }
 
-        return line.toString();
+        return LEGACY_SERIALIZER.serialize(line.build());
     }
 
     private String buildPlaceholderLine(
@@ -971,31 +855,27 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final ListingSettings listingSettings,
         final boolean categoryAlreadyShown
     ) {
-        final StringBuilder line = new StringBuilder();
-        line.append(ChatColor.YELLOW);
-        line.append(categoryAlreadyShown ? "    " : "  ");
+        final TextComponent.Builder line = Component.text()
+            .append(Component.text(categoryAlreadyShown ? "    " : "  ", NamedTextColor.YELLOW));
 
         if (!categoryAlreadyShown && listingSettings.showCategory()) {
-            line.append("[").append(entry.category()).append("] ");
+            line.append(Component.text("[" + entry.category() + "] ", NamedTextColor.YELLOW));
         }
 
         if (listingSettings.showType()) {
-            line.append(ChatColor.GRAY)
-                .append("[")
-                .append(entry.type().name().toLowerCase(Locale.ROOT))
-                .append("] ")
-                .append(ChatColor.YELLOW);
+            line.append(Component.text("[" + entry.type().name().toLowerCase(Locale.ROOT) + "] ", NamedTextColor.GRAY));
         }
 
-        line.append("%onemb_").append(entry.key()).append("%");
+        line.append(Component.text("%onemb_" + entry.key() + "%", NamedTextColor.YELLOW));
 
         final String flags = describeEntryFlags(entry, categoryAlreadyShown);
         if (!flags.isBlank()) {
-            line.append(ChatColor.GRAY).append(" [").append(flags).append("]");
+            line.append(Component.text(" [" + flags + "]", NamedTextColor.GRAY));
         }
 
-        line.append(ChatColor.GRAY).append(": ").append(ChatColor.WHITE).append("'").append(safeDisplay(plugin.getConfiguredOutput(entry))).append("'");
-        return line.toString();
+        line.append(Component.text(": ", NamedTextColor.GRAY));
+        line.append(Component.text("'" + safeDisplay(plugin.getConfiguredOutput(entry)) + "'", NamedTextColor.WHITE));
+        return LEGACY_SERIALIZER.serialize(line.build());
     }
 
     private void sendPlaceholderEntryLine(
@@ -1057,7 +937,10 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.GOLD + label + ": " + ChatColor.YELLOW + buildPlaceholderToken(entry));
+        sender.sendMessage(
+            Component.text(label + ": ", NamedTextColor.GOLD)
+                .append(Component.text(buildPlaceholderToken(entry), NamedTextColor.YELLOW))
+        );
     }
 
     private void sendInteractiveValueLine(
@@ -1076,7 +959,10 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
             return;
         }
 
-        sender.sendMessage(ChatColor.GRAY + "  " + label + ": " + ChatColor.WHITE + "'" + value + "'");
+        sender.sendMessage(
+            Component.text("  " + label + ": ", NamedTextColor.GRAY)
+                .append(Component.text("'" + value + "'", NamedTextColor.WHITE))
+        );
     }
 
     private Component buildInteractivePlaceholderComponent(final PlaceholderEntry entry, final String displayValue) {
@@ -1138,7 +1024,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
     }
 
     private String abbreviateForHover(final String value) {
-        final String plainValue = ChatColor.stripColor(value) == null ? value : ChatColor.stripColor(value);
+        final String plainValue = PLAIN_TEXT_SERIALIZER.serialize(LEGACY_SERIALIZER.deserialize(value));
         return plainValue.length() <= 180 ? plainValue : plainValue.substring(0, 177) + "...";
     }
 
@@ -1317,7 +1203,7 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
         final String usageMessage
     ) {
         if (args.length != 2 && !(args.length == 3 && plugin.hasCategory(args[1]))) {
-            sender.sendMessage(ChatColor.RED + usageMessage);
+            sendError(sender, usageMessage);
             return null;
         }
 
@@ -1342,31 +1228,26 @@ public final class PlaceholdersCommand implements CommandExecutor, TabCompleter 
                     && key.equals(normalizedCategory)
                     && plugin.hasCategory(normalizedCategory)
             ) {
-                sender.sendMessage(
-                    ChatColor.RED
-                        + "Category '"
-                        + normalizedCategory
-                        + "' was found, but a placeholder key is missing."
-                );
-                sender.sendMessage(
-                    ChatColor.YELLOW
-                        + "Usage: /_placeholders "
-                        + commandName
+                sendError(sender, "Category '" + normalizedCategory + "' was found, but a placeholder key is missing.");
+                sendMiniMessage(
+                    sender,
+                    "<yellow>Usage: /_placeholders "
+                        + MINI_MESSAGE.escapeTags(commandName)
                         + " "
-                        + normalizedCategory
-                        + " <placeholder>"
+                        + MINI_MESSAGE.escapeTags(normalizedCategory)
+                        + " &lt;placeholder&gt;</yellow>"
                 );
                 return null;
             }
 
-            sender.sendMessage(ChatColor.RED + "Placeholder %onemb_" + key + "% was not found.");
+            sendError(sender, "Placeholder %onemb_" + key + "% was not found.");
             return null;
         }
 
         if (expectedCategory != null && !entry.category().equals(expectedCategory)) {
-            sender.sendMessage(
-                ChatColor.RED
-                    + "Placeholder %onemb_"
+            sendError(
+                sender,
+                "Placeholder %onemb_"
                     + key
                     + "% exists in category '"
                     + entry.category()

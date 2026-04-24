@@ -27,7 +27,7 @@ java -version
 This produces:
 
 ```text
-libs/1MB-Placeholders-v1.3.0-538-j25-1.21.11.jar
+libs/1MB-Placeholders-v1.3.0-540-j25-1.21.11.jar
 ```
 
 The Gradle build now copies the release jar into the repo-root `libs/` folder so older tested jars stay preserved between builds.
@@ -197,7 +197,7 @@ This is made for the 1MoreBlock.com Minecraft server, you're free to use this fo
 ## Credits
 
 Code created, and .jar made by PyroTempus. (v 1.0.0 build 519 for 1.19.x)
-Code updated by mrfloris and OpenAI. (v 1.3.0 build 538 for 1.21.11)
+Code updated by mrfloris and OpenAI. (v 1.3.0 build 540 for 1.21.11)
 
 ## Placeholders
 
